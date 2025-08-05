@@ -7,12 +7,14 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\ClientController;
+use App\Http\Controllers\Api\PanelController;
+use App\Http\Controllers\Api\InverterController;
+use App\Http\Controllers\Api\BatteryController;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
 | Here is where you can register API routes for your application. These
 | routes are loaded by the RouteServiceProvider and all of them will
 | be assigned to the "api" middleware group. Make something great!
@@ -83,6 +85,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('clients', ClientController::class);
     Route::get('clients/user/{userId}', [ClientController::class, 'getByUser']);
     Route::get('clients-statistics', [ClientController::class, 'statistics']);
+
+    // Paneles - Movidas aquí para que sean /api/panels
+    Route::apiResource('panels', PanelController::class);
+    Route::get('panels/{id}/download-technical-sheet', [PanelController::class, 'downloadTechnicalSheet']);
+    Route::get('panels-statistics', [PanelController::class, 'statistics']);
 });
 
 // Rutas adicionales para administración (requieren permisos específicos)
@@ -103,4 +110,20 @@ Route::middleware(['auth:sanctum', 'check.permission:admin'])->prefix('admin')->
     
     // Importar usuarios
     Route::post('users/import', [UserController::class, 'import']);
+    
 });
+
+// Paneles
+Route::apiResource('panels', PanelController::class);
+Route::get('panels/{id}/download-technical-sheet', [PanelController::class, 'downloadTechnicalSheet']);
+Route::get('panels-statistics', [PanelController::class, 'statistics']);
+
+// Inversores
+Route::apiResource('inverters', InverterController::class);
+Route::get('inverters/{id}/download-technical-sheet', [InverterController::class, 'downloadTechnicalSheet']);
+Route::get('inverters-statistics', [InverterController::class, 'statistics']);
+
+// Baterías
+Route::apiResource('batteries', BatteryController::class);
+Route::get('batteries/{id}/download-technical-sheet', [BatteryController::class, 'downloadTechnicalSheet']);
+Route::get('batteries-statistics', [BatteryController::class, 'statistics']);
