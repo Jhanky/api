@@ -10,6 +10,11 @@ use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\InverterController;
 use App\Http\Controllers\Api\BatteryController;
+use App\Http\Controllers\Api\QuotationController;
+use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\CostCenterController;
+use App\Http\Controllers\Api\ProjectController;
 
 /*
 |--------------------------------------------------------------------------
@@ -90,6 +95,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('panels', PanelController::class);
     Route::get('panels/{id}/download-technical-sheet', [PanelController::class, 'downloadTechnicalSheet']);
     Route::get('panels-statistics', [PanelController::class, 'statistics']);
+
+    // Rutas de cotizaciones
+    Route::apiResource('quotations', QuotationController::class);
+    Route::get('quotations/{id}/pdf', [QuotationController::class, 'downloadPDF']);
 });
 
 // Rutas adicionales para administración (requieren permisos específicos)
@@ -127,3 +136,28 @@ Route::get('inverters-statistics', [InverterController::class, 'statistics']);
 Route::apiResource('batteries', BatteryController::class);
 Route::get('batteries/{id}/download-technical-sheet', [BatteryController::class, 'downloadTechnicalSheet']);
 Route::get('batteries-statistics', [BatteryController::class, 'statistics']);
+
+// Rutas para el sistema de facturas
+Route::middleware('auth:sanctum')->group(function () {
+    // Purchases (Facturas)
+    Route::get('/purchases', [PurchaseController::class, 'index']);
+    Route::get('/purchases/summary', [PurchaseController::class, 'summary']);
+    Route::post('/purchases', [PurchaseController::class, 'store']);
+    Route::put('/purchases/{id}', [PurchaseController::class, 'update']);
+    Route::delete('/purchases/{id}', [PurchaseController::class, 'destroy']);
+    
+    // Suppliers (Proveedores)
+    Route::apiResource('suppliers', SupplierController::class);
+    
+    // Cost Centers (Centros de Costo)
+    Route::apiResource('cost-centers', CostCenterController::class);
+    
+    // Projects (Proyectos)
+    Route::apiResource('projects', ProjectController::class);
+});Route::middleware('auth:sanctum')->group(function () {
+    // ... existing routes ...
+    
+    // Rutas adicionales para proyectos (además del apiResource)
+    Route::put('/projects/{id}/status', [ProjectController::class, 'updateStatus']);
+    Route::put('/projects/{id}/dates', [ProjectController::class, 'updateDates']);
+});
