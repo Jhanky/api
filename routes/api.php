@@ -154,10 +154,20 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Projects (Proyectos)
     Route::apiResource('projects', ProjectController::class);
-});Route::middleware('auth:sanctum')->group(function () {
-    // ... existing routes ...
-    
-    // Rutas adicionales para proyectos (además del apiResource)
-    Route::put('/projects/{id}/status', [ProjectController::class, 'updateStatus']);
-    Route::put('/projects/{id}/dates', [ProjectController::class, 'updateDates']);
 });
+// Rutas para Locations/Ciudades
+Route::middleware('auth:sanctum')->group(function () {
+    // Rutas específicas para select dependientes
+    Route::get('/locations/departments', [App\Http\Controllers\Api\LocationController::class, 'getDepartments']);
+    Route::get('/locations/cities', [App\Http\Controllers\Api\LocationController::class, 'getCitiesByDepartment']);
+    
+    // CRUD completo de locations
+    Route::apiResource('locations', App\Http\Controllers\Api\LocationController::class);
+    
+    // Estadísticas de locations
+    Route::get('/locations-statistics', [App\Http\Controllers\Api\LocationController::class, 'statistics']);
+});
+
+// Rutas adicionales para proyectos (además del apiResource)
+Route::put('/projects/{id}/status', [ProjectController::class, 'updateStatus']);
+Route::put('/projects/{id}/dates', [ProjectController::class, 'updateDates']);
