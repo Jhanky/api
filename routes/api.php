@@ -34,6 +34,8 @@ Route::prefix('auth')->group(function () {
 
 // Rutas protegidas con autenticación
 Route::middleware('auth:sanctum')->group(function () {
+    // Obtener todos los estados de cotización
+    Route::get('quotation-statuses', [\App\Http\Controllers\Api\QuotationStatusListController::class, 'index']);
     
     // Rutas de autenticación para usuarios autenticados
     Route::prefix('auth')->group(function () {
@@ -152,8 +154,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Cost Centers (Centros de Costo)
     Route::apiResource('cost-centers', CostCenterController::class);
     
-    // Projects (Proyectos)
-    Route::apiResource('projects', ProjectController::class);
+// Projects (Proyectos)
+Route::apiResource('projects', ProjectController::class);
+
+// Ruta para estadísticas de facturas/compras
+Route::get('/purchase-stats', [\App\Http\Controllers\PurchaseStatsController::class, 'stats']);
 });
 // Rutas para Locations/Ciudades
 Route::middleware('auth:sanctum')->group(function () {
