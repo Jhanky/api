@@ -177,4 +177,15 @@ class UserController extends Controller
             'avatar_url' => $user->avatar,
         ]);
     }
+
+    /**
+     * Get the authenticated user's ID.
+     */
+    public function getUserId(Request $request)
+    {
+        return response()->json([
+            'success' => true,
+            'user_id' => $request->user()->id,
+        ]);
+    }
 }

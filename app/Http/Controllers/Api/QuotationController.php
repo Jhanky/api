@@ -56,6 +56,14 @@ class QuotationController extends Controller
             $quotations = $query->orderBy('creation_date', 'desc')
                                ->paginate($request->get('per_page', 15));
 
+            // Modificar cada cotización para mostrar el nombre del estado en vez del id
+            $quotations->getCollection()->transform(function ($quotation) {
+                $quotationArray = $quotation->toArray();
+                $quotationArray['status_name'] = $quotation->status ? $quotation->status->name : null;
+                unset($quotationArray['status_id']);
+                return $quotationArray;
+            });
+
             return response()->json($quotations);
         } catch (\Exception $e) {
             return response()->json([

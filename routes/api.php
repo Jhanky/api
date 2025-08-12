@@ -53,6 +53,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('{user}', [UserController::class, 'update']); // Actualizar usuario
         Route::delete('{user}', [UserController::class, 'destroy']); // Eliminar usuario
         
+        // Ruta para obtener el ID del usuario autenticado
+        Route::get('me/id', [UserController::class, 'getUserId']); // Obtener ID del usuario autenticado
+        
         // Ruta para subir avatar
         Route::post('{user}/avatar', [UserController::class, 'uploadAvatar']);
         
