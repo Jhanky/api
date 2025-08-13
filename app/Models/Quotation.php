@@ -27,6 +27,8 @@ class Quotation extends Model
         'administration_percentage',
         'contingency_percentage',
         'withholding_percentage',
+        'legalization_cost',
+        'legalization_cost_percentage',
         'subtotal',
         'profit',
         'profit_iva',
@@ -49,6 +51,8 @@ class Quotation extends Model
         'administration_percentage' => 'decimal:3',
         'contingency_percentage' => 'decimal:3',
         'withholding_percentage' => 'decimal:3',
+        'legalization_cost' => 'float',
+        'legalization_cost_percentage' => 'decimal:3',
         'subtotal' => 'float',
         'profit' => 'float',
         'profit_iva' => 'float',
@@ -118,7 +122,10 @@ class Quotation extends Model
         $subtotalProducts = $this->usedProducts()->sum('total_value');
         $subtotalItems = $this->items()->sum('valor_total_item');
         
-        $subtotal = $subtotalProducts + $subtotalItems;
+        // Incluir legalization_cost con su porcentaje de utilidad
+        $legalizationCostWithProfit = $this->legalization_cost * (1 + ($this->legalization_cost_percentage / 100));
+        
+        $subtotal = $subtotalProducts + $subtotalItems + $legalizationCostWithProfit;
         $commercialManagement = $subtotal * $this->commercial_management_percentage;
         $subtotal2 = $subtotal + $commercialManagement;
         

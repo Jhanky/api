@@ -92,6 +92,8 @@ class QuotationController extends Controller
             'administration_percentage' => 'required|numeric|min:0|max:1',
             'contingency_percentage' => 'required|numeric|min:0|max:1',
             'withholding_percentage' => 'required|numeric|min:0|max:1',
+            'legalization_cost' => 'required|numeric|min:0',
+            'legalization_cost_percentage' => 'nullable|numeric|min:0|max:1',
             'products' => 'required|array|min:1',
             'products.*.product_type' => 'required|in:panel,inverter,battery',
             'products.*.product_id' => 'required|integer',
@@ -182,7 +184,11 @@ class QuotationController extends Controller
             }
 
             // Calcular totales de la cotización
-            $subtotal = $subtotalProducts + $subtotalItems;
+            // Incluir legalization_cost con su porcentaje de utilidad (por defecto 25%)
+            $legalizationCostPercentage = $request->legalization_cost_percentage ?? 0.25;
+            $legalizationCostWithProfit = $request->legalization_cost * (1 + $legalizationCostPercentage);
+            
+            $subtotal = $subtotalProducts + $subtotalItems + $legalizationCostWithProfit;
             $commercialManagement = $subtotal * $request->commercial_management_percentage;
             $subtotal2 = $subtotal + $commercialManagement;
             
@@ -210,6 +216,8 @@ class QuotationController extends Controller
                 'administration_percentage' => $request->administration_percentage,
                 'contingency_percentage' => $request->contingency_percentage,
                 'withholding_percentage' => $request->withholding_percentage,
+                'legalization_cost' => $request->legalization_cost,
+                'legalization_cost_percentage' => $legalizationCostPercentage,
                 'subtotal' => $subtotal,
                 'subtotal2' => $subtotal2,
                 'subtotal3' => $subtotal3,
