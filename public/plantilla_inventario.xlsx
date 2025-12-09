@@ -1,0 +1,11 @@
+material_id,warehouse_id,cantidad,unidad_medida,categoria,ubicacion,notas
+1,1,50,Unidades,Materiales eléctricos,Pasillo A, Estante 1,Stock inicial
+2,1,30,Rollos,Materiales de construcción,Pasillo B, Estante 2,Para proyectos grandes
+3,2,100,Unidades,Herramientas,Pasillo C, Estante 1,Herramientas menores
+4,1,20,Unidades,Paneles solares,Pasillo A, Estante 3,Paneles fotovoltaicos
+5,2,15,Unidades,Inversores,Pasillo A, Estante 4,Inversores solares
+6,1,200,Metros,Cableado,Pasillo B, Estante 1,Cable tipo THHN
+7,1,10,Unidades,Estructuras,Pasillo C, Estante 2,Estructuras metálicas
+8,2,5,Unidades,Equipos de medición,Pasillo D, Estante 1,Medidores y sensores
+9,1,40,Unidades,Accesorios,Pasillo B, Estante 3,Soportes y conectores
+10,1,8,Unidades,Baterías,Pasillo D, Estante 2,Baterías de respaldo
