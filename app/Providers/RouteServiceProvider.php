@@ -37,11 +37,6 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/api.php'));
-
-            // Rutas APK para aplicación móvil (React Native)
-            Route::middleware('api')
-                ->prefix('apk')
-                ->group(base_path('routes/apk.php'));
         });
     }
 }

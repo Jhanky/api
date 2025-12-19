@@ -56,14 +56,6 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
 
-        'api-mobile' => [
-            \App\Http\Middleware\PlatformDetection::class,
-            \App\Http\Middleware\Shared\LoggingMiddleware::class,
-            \App\Http\Middleware\Apk\MobileOptimization::class,
-            \App\Http\Middleware\Apk\MobileRateLimit::class,
-            \App\Http\Middleware\Shared\ResponseOptimization::class,
-            \Illuminate\Routing\Middleware\SubstituteBindings::class,
-        ],
     ];
 
     /**
@@ -91,11 +83,7 @@ class Kernel extends HttpKernel
         // Middleware específicos para API (Web)
         'api.role' => \App\Http\Middleware\Api\CheckRole::class,
         'api.web.optimization' => \App\Http\Middleware\Api\WebOptimization::class,
-        
-        // Middleware específicos para APK (Mobile)
-        'apk.mobile.auth' => \App\Http\Middleware\Apk\MobileAuth::class,
-        'apk.mobile.optimization' => \App\Http\Middleware\Apk\MobileOptimization::class,
-        'apk.mobile.rate.limit' => \App\Http\Middleware\Apk\MobileRateLimit::class,
+
         
         // Middleware compartidos
         'shared.logging' => \App\Http\Middleware\Shared\LoggingMiddleware::class,

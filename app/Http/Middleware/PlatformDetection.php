@@ -40,10 +40,6 @@ class PlatformDetection
         $path = $request->path();
         
         // Detectar por prefijo de ruta
-        if (str_starts_with($path, 'apk/')) {
-            return 'mobile';
-        }
-        
         if (str_starts_with($path, 'api/')) {
             return 'web';
         }
