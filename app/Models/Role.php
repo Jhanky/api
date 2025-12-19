@@ -10,24 +10,16 @@ class Role extends Model
 {
     use HasFactory;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
         'name',
-        'display_name',
+        'slug',
         'description',
+        'is_system_role',
         'is_active',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
+        'is_system_role' => 'boolean',
         'is_active' => 'boolean',
     ];
 
@@ -40,40 +32,18 @@ class Role extends Model
     }
 
     /**
-     * Get the permissions for the role.
+     * Scope to get only active roles.
      */
-    public function permissions(): BelongsToMany
+    public function scopeActive($query)
     {
-        return $this->belongsToMany(Permission::class)->withTimestamps();
+        return $query->where('is_active', true);
     }
 
     /**
-     * Check if role has a specific permission.
+     * Scope to get only system roles.
      */
-    public function hasPermission(string $permission): bool
+    public function scopeSystemRoles($query)
     {
-        return $this->permissions()->where('name', $permission)->exists();
-    }
-
-    /**
-     * Assign a permission to the role.
-     */
-    public function givePermission(string $permission): void
-    {
-        $permissionModel = Permission::where('name', $permission)->first();
-        if ($permissionModel && !$this->hasPermission($permission)) {
-            $this->permissions()->attach($permissionModel->id);
-        }
-    }
-
-    /**
-     * Remove a permission from the role.
-     */
-    public function revokePermission(string $permission): void
-    {
-        $permissionModel = Permission::where('name', $permission)->first();
-        if ($permissionModel) {
-            $this->permissions()->detach($permissionModel->id);
-        }
+        return $query->where('is_system_role', true);
     }
 }

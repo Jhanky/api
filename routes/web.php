@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -13,8 +14,20 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Ruta principal - mostrar estado de la API y servicios activos
 Route::get('/', function () {
-    return view('welcome');
+    return view('api-status');
+});
+
+// Rutas de autenticación API
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
+});
+
+Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 });
 
 // Ruta de prueba para verificar que la API funciona
@@ -36,3 +49,6 @@ Route::get('/api-status', function () {
 Route::get('/api-info', function () {
     return view('api-info');
 });
+
+// Ruta de prueba para Inertia.js + React
+Route::get('/test-inertia', [App\Http\Controllers\TestController::class, 'index']);

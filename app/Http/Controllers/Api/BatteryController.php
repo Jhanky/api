@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Battery;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +13,7 @@ use Illuminate\Support\Str;
 
 class BatteryController extends Controller
 {
+    use ApiResponseTrait;
     /**
      * Listar todas las baterías con filtros opcionales
      */
@@ -21,6 +23,15 @@ class BatteryController extends Controller
             $query = Battery::query();
 
             // Filtros
+            if ($request->has('search')) {
+                $search = $request->get('search');
+                $query->where(function($q) use ($search) {
+                    $q->where('brand', 'like', "%{$search}%")
+                      ->orWhere('model', 'like', "%{$search}%")
+                      ->orWhere('type', 'like', "%{$search}%");
+                });
+            }
+
             if ($request->has('brand') && $request->brand) {
                 $query->byBrand($request->brand);
             }
@@ -42,20 +53,33 @@ class BatteryController extends Controller
             }
 
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'battery_id');
-            $sortOrder = $request->get('sort_order', 'asc');
+            $sortBy = $request->get('sort_by', 'id');
+            $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
             // Paginación
             $perPage = $request->get('per_page', 15);
             $batteries = $query->paginate($perPage);
 
-            return response()->json($batteries);
-        } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al obtener las baterías',
-                'error' => $e->getMessage()
-            ], 500);
+                'success' => true,
+                'data' => $batteries->items(),
+                'pagination' => [
+                    'current_page' => $batteries->currentPage(),
+                    'per_page' => $batteries->perPage(),
+                    'total' => $batteries->total(),
+                    'last_page' => $batteries->lastPage(),
+                    'from' => $batteries->firstItem(),
+                    'to' => $batteries->lastItem(),
+                    'has_more_pages' => $batteries->hasMorePages(),
+                ],
+                'message' => 'Baterías obtenidas exitosamente',
+                'timestamp' => now()->toISOString(),
+                'request_id' => Str::uuid()->toString()
+            ]);
+
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al obtener las baterías');
         }
     }
 
@@ -82,8 +106,14 @@ class BatteryController extends Controller
         }
 
         try {
-            $batteryData = $validator->validated();
-            unset($batteryData['technical_sheet']);
+            $batteryData = [
+                'brand' => $request->brand,
+                'model' => $request->model,
+                'capacity' => $request->capacity,
+                'voltage' => $request->voltage,
+                'type' => $request->type,
+                'price' => $request->price,
+            ];
 
             // Manejar subida de archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -147,8 +177,14 @@ class BatteryController extends Controller
 
         try {
             $battery = Battery::findOrFail($id);
-            $batteryData = $validator->validated();
-            unset($batteryData['technical_sheet']);
+            $batteryData = [
+                'brand' => $request->get('brand'),
+                'model' => $request->get('model'),
+                'capacity' => $request->get('capacity'),
+                'voltage' => $request->get('voltage'),
+                'type' => $request->get('type'),
+                'price' => $request->get('price'),
+            ];
 
             // Manejar actualización de archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -236,40 +272,5 @@ class BatteryController extends Controller
         }
     }
 
-    /**
-     * Obtener estadísticas de baterías
-     */
-    public function statistics(): JsonResponse
-    {
-        try {
-            $stats = [
-                'total_batteries' => Battery::count(),
-                'brands' => Battery::distinct('brand')->count('brand'),
-                'types' => Battery::distinct('type')->count('type'),
-                'average_capacity' => Battery::avg('capacity'),
-                'average_voltage' => Battery::avg('voltage'),
-                'average_price' => Battery::avg('price'),
-                'max_capacity' => Battery::max('capacity'),
-                'min_capacity' => Battery::min('capacity'),
-                'max_voltage' => Battery::max('voltage'),
-                'min_voltage' => Battery::min('voltage'),
-                'max_price' => Battery::max('price'),
-                'min_price' => Battery::min('price'),
-                'by_type' => Battery::selectRaw('type, COUNT(*) as count')
-                    ->groupBy('type')
-                    ->get(),
-                'by_brand' => Battery::selectRaw('brand, COUNT(*) as count')
-                    ->groupBy('brand')
-                    ->orderBy('count', 'desc')
-                    ->get(),
-            ];
 
-            return response()->json($stats);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al obtener estadísticas',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 }

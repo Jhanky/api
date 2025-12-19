@@ -4,8 +4,9 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use App\Models\User;
+use App\Models\Role;
 
 class UserSeeder extends Seeder
 {
@@ -15,38 +16,21 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         // Crear usuario administrador
-        User::create([
-            'name' => 'Administrador',
+        $adminUser = User::create([
             'username' => 'admin',
+            'name' => 'Administrador',
             'email' => 'admin@energy4cero.com',
-            'password' => Hash::make('password123'),
-            'phone' => '+573001234567',
-            'job_title' => 'Administrador del Sistema',
-            'profile_photo' => null,
+            'password' => Hash::make('password'), // Cambiar en producción
+            'is_active' => true,
         ]);
 
-        // Crear usuario de prueba
-        User::create([
-            'name' => 'Juan Pérez',
-            'username' => 'juan.perez',
-            'email' => 'juan.perez@energy4cero.com',
-            'password' => Hash::make('password123'),
-            'phone' => '+573001234568',
-            'job_title' => 'Ingeniero de Ventas',
-            'profile_photo' => null,
-        ]);
-
-        // Crear otro usuario de prueba
-        User::create([
-            'name' => 'María García',
-            'username' => 'maria.garcia',
-            'email' => 'maria.garcia@energy4cero.com',
-            'password' => Hash::make('password123'),
-            'phone' => '+573001234569',
-            'job_title' => 'Técnico de Instalación',
-            'profile_photo' => null,
-        ]);
-
-        $this->command->info('Usuarios de prueba creados exitosamente con dominio @energy4cero.com');
+        // Asignar rol de administrador
+        $adminRole = Role::where('slug', 'admin')->first();
+        if ($adminRole) {
+            $adminUser->roles()->attach($adminRole->id, [
+                'assigned_by' => $adminUser->id,
+                'assigned_at' => now()
+            ]);
+        }
     }
 }

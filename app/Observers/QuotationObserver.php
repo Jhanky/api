@@ -4,8 +4,7 @@ namespace App\Observers;
 
 use App\Models\Quotation;
 use App\Models\Project;
-use App\Models\ProjectStatus;
-use App\Models\Location;
+use App\Models\ProjectState;
 
 class QuotationObserver
 {
@@ -22,11 +21,18 @@ class QuotationObserver
      */
     public function updated(Quotation $quotation): void
     {
+        // Este observer está desactivado para evitar conflictos con el controller
+        // La creación de proyectos se maneja desde QuotationController::updateStatus
+        return;
+
+        // Código original comentado por si se necesita en el futuro:
+        /*
         // Verificar si el estado cambió a "Contratada" (ID 5)
         if ($quotation->wasChanged('status_id') && $quotation->status_id == 5) {
-            \Log::info('Observer detectó cambio a Contratada. Cotización ID: ' . $quotation->quotation_id);
+            \Log::info('Observer detectó cambio a Contratada. Cotización ID: ' . $quotation->id);
             $this->createProjectFromQuotation($quotation);
         }
+        */
     }
 
     /**
@@ -55,42 +61,46 @@ class QuotationObserver
 
     /**
      * Crear proyecto automáticamente cuando la cotización se convierte en contratada
+     * NOTA: Este método está obsoleto. Se maneja desde el controller.
      */
     private function createProjectFromQuotation(Quotation $quotation): void
     {
         try {
-            \Log::info('Iniciando creación de proyecto para cotización: ' . $quotation->quotation_id);
-            
-            // Obtener el estado "Iniciado" para el proyecto
-            $initialStatus = ProjectStatus::where('name', 'Iniciado')->first();
-            
-            if (!$initialStatus) {
-                // Si no existe el estado, usar el primero disponible
-                $initialStatus = ProjectStatus::first();
+            \Log::info('Iniciando creación de proyecto para cotización: ' . $quotation->id);
+
+            // Verificar que no exista ya un proyecto para esta cotización
+            if (Project::where('quotation_id', $quotation->id)->exists()) {
+                \Log::warning('Ya existe un proyecto para la cotización #' . $quotation->id);
+                return;
             }
-            
-            \Log::info('Estado del proyecto: ' . ($initialStatus ? $initialStatus->name : 'No encontrado'));
 
-            // Obtener la ubicación del cliente
-            $location = $quotation->client->location ?? Location::first();
-            
-            \Log::info('Ubicación encontrada: ' . ($location ? $location->location_id : 'No encontrada'));
+            // Obtener el estado inicial para el proyecto (Borrador - ID 1)
+            $initialState = ProjectState::find(1); // Estado "Borrador"
 
-            // Crear el proyecto
+            if (!$initialState) {
+                \Log::error('Estado inicial de proyecto no encontrado (ID 1)');
+                return;
+            }
+
+            \Log::info('Estado del proyecto: ' . $initialState->name);
+
+            // Crear el proyecto con los campos correctos
             $project = Project::create([
-                'quotation_id' => $quotation->quotation_id,
+                'quotation_id' => $quotation->id,
                 'client_id' => $quotation->client_id,
-                'location_id' => $location ? $location->location_id : null,
-                'status_id' => $initialStatus->status_id,
-                'project_name' => $quotation->project_name,
+                'department_id' => $quotation->client->department_id,
+                'city_id' => $quotation->client->city_id,
+                'current_state_id' => $initialState->id,
+                'name' => $quotation->project_name,
+                'contracted_value_cop' => $quotation->total_value,
                 'start_date' => now(),
-                'project_manager_id' => $quotation->user_id, // El usuario que creó la cotización será el gerente inicial
-                'notes' => 'Proyecto creado automáticamente al contratar la cotización #' . $quotation->quotation_id . '. Pendiente visita técnica para geolocalización.',
-                // Los campos de georreferenciación se actualizarán después mediante visita técnica
+                'project_manager_id' => $quotation->user_id,
+                'notes' => 'Proyecto creado automáticamente al contratar la cotización #' . $quotation->code . '. Pendiente visita técnica para geolocalización.',
+                'is_active' => true,
             ]);
-            
-            \Log::info('Proyecto creado exitosamente con ID: ' . $project->project_id);
-            
+
+            \Log::info('Proyecto creado exitosamente con ID: ' . $project->id);
+
         } catch (\Exception $e) {
             \Log::error('Error al crear proyecto: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());

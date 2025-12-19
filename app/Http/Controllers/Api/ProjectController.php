@@ -17,17 +17,11 @@ class ProjectController extends Controller
     public function index(): JsonResponse
     {
         try {
-            // Obtener todos los proyectos con su cotización asociada
+            // Obtener todos los proyectos con sus relaciones
             $projects = Project::with([
-                'quotation' => function($query) {
-                    $query->with([
-                        'usedProducts' => function($query) {
-                            $query->with(['panel', 'inverter', 'battery']);
-                        }
-                    ]);
-                },
+                'quotation.quotationProducts',
                 'client',
-                'location'
+                'currentState'
             ])->get();
 
             $result = $projects->map(function ($project) {
@@ -35,83 +29,77 @@ class ProjectController extends Controller
                 $paneles = [];
                 $inversores = [];
                 $baterias = [];
-                
-                if ($quotation && $quotation->usedProducts) {
-                    foreach ($quotation->usedProducts as $product) {
-                        if ($product->product_type === 'panel' && $product->panel) {
-                            $paneles[$product->panel->brand] = [
+
+                // Procesar productos de la cotización usando campos snapshot
+                if ($quotation && $quotation->quotationProducts) {
+                    foreach ($quotation->quotationProducts as $product) {
+                        $specs = $product->snapshot_specs ?? [];
+                        
+                        if ($product->product_type === 'panel') {
+                            $paneles[$product->snapshot_brand ?? 'Sin marca'] = [
                                 'cantidad' => $product->quantity,
-                                'modelo' => $product->panel->model,
-                                'potencia' => $product->panel->power . ' W',
-                                'tipo' => $product->panel->type,
-                                'ficha_tecnica' => $product->panel->technical_sheet_url,
-                                'precio_unitario' => $product->unit_price,
-                                'valor_total' => $product->total_value
+                                'modelo' => $product->snapshot_model,
+                                'potencia' => ($specs['power'] ?? '') . ' W',
+                                'tipo' => $specs['type'] ?? null,
+                                'precio_unitario' => $product->unit_price_cop,
+                                'valor_total' => $product->quantity * $product->unit_price_cop
                             ];
                         }
-                        if ($product->product_type === 'inverter' && $product->inverter) {
-                            $inversores[$product->inverter->brand] = [
+                        if ($product->product_type === 'inverter') {
+                            $inversores[$product->snapshot_brand ?? 'Sin marca'] = [
                                 'cantidad' => $product->quantity,
-                                'modelo' => $product->inverter->model,
-                                'potencia' => $product->inverter->power . ' W',
-                                'ficha_tecnica' => $product->inverter->technical_sheet_url,
-                                'precio_unitario' => $product->unit_price,
-                                'valor_total' => $product->total_value
+                                'modelo' => $product->snapshot_model,
+                                'potencia' => ($specs['power'] ?? '') . ' W',
+                                'precio_unitario' => $product->unit_price_cop,
+                                'valor_total' => $product->quantity * $product->unit_price_cop
                             ];
                         }
-                        if ($product->product_type === 'battery' && $product->battery) {
-                            $baterias[$product->battery->brand] = [
+                        if ($product->product_type === 'battery') {
+                            $baterias[$product->snapshot_brand ?? 'Sin marca'] = [
                                 'cantidad' => $product->quantity,
-                                'modelo' => $product->battery->model,
-                                'capacidad' => $product->battery->capacity . ' Ah',
-                                'voltaje' => $product->battery->voltage . ' V',
-                                'ficha_tecnica' => $product->battery->technical_sheet_url,
-                                'precio_unitario' => $product->unit_price,
-                                'valor_total' => $product->total_value
+                                'modelo' => $product->snapshot_model,
+                                'capacidad' => ($specs['capacity'] ?? '') . ' Ah',
+                                'voltaje' => ($specs['voltage'] ?? '') . ' V',
+                                'precio_unitario' => $product->unit_price_cop,
+                                'valor_total' => $product->quantity * $product->unit_price_cop
                             ];
                         }
                     }
                 }
-                
+
                 return [
-                    'id' => $project->project_id,
-                    'nombre_proyecto' => $project->quotation->project_name ?? 'Sin nombre',
-                    'codigo_proyecto' => 'PROY-' . str_pad($project->project_id, 6, '0', STR_PAD_LEFT),
-                    'estado' => [
-                        'status_id' => $project->status->status_id,
-                        'name' => $project->status->name,
-                        'description' => $project->status->description,
-                        'color' => $project->status->color,
-                        'is_active' => $project->status->is_active,
-                        'created_at' => $project->status->created_at,
-                        'updated_at' => $project->status->updated_at
-                    ],
+                    'id' => $project->id,
+                    'nombre_proyecto' => $project->name ?? ($quotation ? ($quotation->project_name ?? 'Sin nombre') : 'Sin cotización'),
+                    'codigo_proyecto' => $project->code ?? ('PROY-' . str_pad($project->id, 6, '0', STR_PAD_LEFT)),
+                    'estado' => $project->currentState ? [
+                        'id' => $project->currentState->id,
+                        'name' => $project->currentState->name,
+                        'slug' => $project->currentState->slug ?? null,
+                        'color' => $project->currentState->color ?? null,
+                    ] : null,
+                    'power_kwp' => $quotation ? floatval($quotation->power_kwp ?? 0) : null,
+                    'panel_count' => $quotation ? intval($quotation->panel_count ?? 0) : null,
+                    'total_value' => $quotation ? floatval($quotation->total_value ?? 0) : null,
                     'fecha_inicio' => $project->start_date ? $project->start_date->format('Y-m-d') : null,
                     'fecha_fin' => $project->actual_end_date ? $project->actual_end_date->format('Y-m-d') : null,
                     'cotizacion_id' => $project->quotation_id,
-                    'cliente' => [
-                        'client_id' => $project->client->client_id ?? null,
-                        'nombre' => $project->client->name ?? null,
+                    'cliente' => $project->client ? [
+                        'client_id' => $project->client->id,
+                        'nombre' => $project->client->name,
                         'nic' => $project->client->nic ?? null,
                         'departamento' => $project->client->department ?? null,
                         'ciudad' => $project->client->city ?? null,
                         'telefono' => $project->client->phone ?? null,
                         'email' => $project->client->email ?? null
-                    ],
-                    'ubicacion' => [
-                        'location_id' => $project->location->location_id ?? null,
-                        'departamento' => $project->location->department ?? null,
-                        'municipio' => $project->location->municipality ?? null,
-                        'radiacion' => $project->location->radiation ?? null
-                    ],
+                    ] : null,
                     'paneles' => $paneles,
                     'inversores' => $inversores,
                     'baterias' => $baterias,
                     'informacion_tecnica' => [
-                        'tipo_sistema' => $project->quotation->system_type ?? null,
-                        'potencia_total' => $project->quotation->power_kwp ?? null,
-                        'cantidad_paneles' => $project->quotation->panel_count ?? null,
-                        'presupuesto' => $project->quotation->total_value ?? null,
+                        'tipo_sistema' => $quotation ? ($quotation->system_type ?? null) : null,
+                        'potencia_total' => $quotation ? floatval($quotation->power_kwp ?? 0) : null,
+                        'cantidad_paneles' => $quotation ? intval($quotation->panel_count ?? 0) : null,
+                        'presupuesto' => $quotation ? floatval($quotation->total_value ?? 0) : null,
                         'notas' => $project->notes ?? null
                     ]
                 ];
@@ -156,15 +144,111 @@ class ProjectController extends Controller
     {
         try {
             $project = Project::with([
-                'quotation.usedProducts.panel',
-                'quotation.usedProducts.inverter', 
-                'quotation.usedProducts.battery',
-                'purchases'
+                'quotation.quotationProducts',
+                'client',
+                'currentState',
+                'projectType',
+                'department',
+                'city'
             ])->findOrFail($id);
-            
-            return response()->json($project);
+
+            $quotation = $project->quotation;
+            $paneles = [];
+            $inversores = [];
+            $baterias = [];
+
+            // Procesar productos de la cotización usando campos snapshot
+            if ($quotation && $quotation->quotationProducts) {
+                foreach ($quotation->quotationProducts as $product) {
+                    $specs = $product->snapshot_specs ?? [];
+                    
+                    if ($product->product_type === 'panel') {
+                        $paneles[] = [
+                            'brand' => $product->snapshot_brand ?? 'Sin marca',
+                            'cantidad' => $product->quantity,
+                            'modelo' => $product->snapshot_model,
+                            'potencia' => $specs['power'] ?? null,
+                            'tipo' => $specs['type'] ?? null,
+                            'precio_unitario' => $product->unit_price_cop,
+                            'valor_total' => $product->quantity * $product->unit_price_cop
+                        ];
+                    }
+                    if ($product->product_type === 'inverter') {
+                        $inversores[] = [
+                            'brand' => $product->snapshot_brand ?? 'Sin marca',
+                            'cantidad' => $product->quantity,
+                            'modelo' => $product->snapshot_model,
+                            'potencia' => $specs['power'] ?? null,
+                            'precio_unitario' => $product->unit_price_cop,
+                            'valor_total' => $product->quantity * $product->unit_price_cop
+                        ];
+                    }
+                    if ($product->product_type === 'battery') {
+                        $baterias[] = [
+                            'brand' => $product->snapshot_brand ?? 'Sin marca',
+                            'cantidad' => $product->quantity,
+                            'modelo' => $product->snapshot_model,
+                            'capacidad' => $specs['capacity'] ?? null,
+                            'voltaje' => $specs['voltage'] ?? null,
+                            'precio_unitario' => $product->unit_price_cop,
+                            'valor_total' => $product->quantity * $product->unit_price_cop
+                        ];
+                    }
+                }
+            }
+
+            $result = [
+                'id' => $project->id,
+                'code' => $project->code,
+                'nombre_proyecto' => $project->name ?? ($quotation ? ($quotation->project_name ?? 'Sin nombre') : 'Sin cotización'),
+                'description' => $project->description,
+                'estado' => $project->currentState ? [
+                    'id' => $project->currentState->id,
+                    'name' => $project->currentState->name,
+                    'slug' => $project->currentState->slug ?? null,
+                    'color' => $project->currentState->color ?? null,
+                ] : null,
+                'project_type' => $project->projectType ? [
+                    'id' => $project->projectType->id,
+                    'name' => $project->projectType->name,
+                ] : null,
+                'power_kwp' => $quotation ? floatval($quotation->power_kwp ?? 0) : null,
+                'panel_count' => $quotation ? intval($quotation->panel_count ?? 0) : null,
+                'total_value' => $quotation ? floatval($quotation->total_value ?? 0) : null,
+                'fecha_inicio' => $project->start_date ? $project->start_date->format('Y-m-d') : null,
+                'fecha_fin_estimada' => $project->estimated_end_date ? $project->estimated_end_date->format('Y-m-d') : null,
+                'fecha_fin' => $project->actual_end_date ? $project->actual_end_date->format('Y-m-d') : null,
+                'cotizacion_id' => $project->quotation_id,
+                'cotizacion_code' => $quotation ? $quotation->code : null,
+                'cliente' => $project->client ? [
+                    'id' => $project->client->id,
+                    'nombre' => $project->client->name,
+                    'nic' => $project->client->nic ?? null,
+                    'email' => $project->client->email ?? null,
+                    'telefono' => $project->client->phone ?? null,
+                ] : null,
+                'ubicacion' => [
+                    'direccion' => $project->installation_address,
+                    'departamento' => $project->department ? $project->department->name : null,
+                    'ciudad' => $project->city ? $project->city->name : null,
+                    'coordenadas' => $project->coordinates,
+                ],
+                'paneles' => $paneles,
+                'inversores' => $inversores,
+                'baterias' => $baterias,
+                'notas' => $project->notes,
+                'is_active' => $project->is_active,
+                'created_at' => $project->created_at ? $project->created_at->format('Y-m-d H:i:s') : null,
+                'updated_at' => $project->updated_at ? $project->updated_at->format('Y-m-d H:i:s') : null,
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $result
+            ]);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Proyecto no encontrado',
                 'error' => $e->getMessage()
             ], 404);
@@ -204,23 +288,16 @@ class ProjectController extends Controller
         try {
             $project = Project::findOrFail($id);
             
-            // Verificar si el proyecto tiene facturas asociadas
-            $purchasesCount = $project->purchases()->count();
-            
-            if ($purchasesCount > 0) {
-                return response()->json([
-                    'message' => 'No se puede eliminar el proyecto',
-                    'error' => "El proyecto tiene {$purchasesCount} factura(s) asociada(s). Elimine las facturas primero o contacte al administrador."
-                ], 400);
-            }
-            
+            // Eliminar el proyecto (soft delete gracias al trait SoftDeletes)
             $project->delete();
             
             return response()->json([
-                'message' => 'Proyecto eliminado'
+                'success' => true,
+                'message' => 'Proyecto eliminado exitosamente'
             ]);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Error al eliminar proyecto',
                 'error' => $e->getMessage()
             ], 500);
@@ -269,6 +346,41 @@ class ProjectController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al actualizar fechas del proyecto',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get project statistics.
+     */
+    public function statistics(): JsonResponse
+    {
+        try {
+            $total = Project::count();
+            
+            // Obtener estadísticas por estado usando la relación
+            $byStatus = [];
+            $statuses = \App\Models\ProjectStatus::all();
+            
+            foreach ($statuses as $status) {
+                $byStatus[$status->name] = Project::where('status_id', $status->status_id)->count();
+            }
+
+            $stats = [
+                'total' => $total,
+                'by_status' => $byStatus
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $stats,
+                'message' => 'Project statistics retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving statistics',
                 'error' => $e->getMessage()
             ], 500);
         }

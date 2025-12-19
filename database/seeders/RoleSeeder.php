@@ -15,38 +15,44 @@ class RoleSeeder extends Seeder
     {
         $roles = [
             [
-                'name' => 'administrador',
-                'display_name' => 'Administrador',
-                'description' => 'Rol con acceso completo al sistema, puede gestionar usuarios, roles y configuraciones.',
+                'name' => 'Administrador',
+                'slug' => 'admin',
+                'description' => 'Acceso total al sistema',
+                'is_system_role' => true,
                 'is_active' => true,
             ],
             [
-                'name' => 'gerente',
-                'display_name' => 'Gerente',
-                'description' => 'Rol gerencial con acceso a reportes, gestión de proyectos y supervisión de equipos.',
+                'name' => 'Gerente Comercial',
+                'slug' => 'sales-manager',
+                'description' => 'Gestión de clientes, cotizaciones y proyectos comerciales',
+                'is_system_role' => true,
                 'is_active' => true,
             ],
             [
-                'name' => 'tecnico',
-                'display_name' => 'Técnico',
-                'description' => 'Rol para personal técnico, puede gestionar proyectos, instalaciones y mantenimientos.',
+                'name' => 'Gerente de Proyectos',
+                'slug' => 'project-manager',
+                'description' => 'Gestión completa de proyectos y seguimiento',
+                'is_system_role' => true,
                 'is_active' => true,
             ],
             [
-                'name' => 'contador',
-                'display_name' => 'Contador',
-                'description' => 'Rol para personal contable, puede gestionar facturas, reportes financieros y contabilidad.',
+                'name' => 'Técnico',
+                'slug' => 'technician',
+                'description' => 'Ejecución de instalaciones y mantenimientos',
+                'is_system_role' => true,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Contador',
+                'slug' => 'accountant',
+                'description' => 'Gestión financiera y contable',
+                'is_system_role' => true,
                 'is_active' => true,
             ],
         ];
 
         foreach ($roles as $role) {
-            Role::updateOrCreate(
-                ['name' => $role['name']],
-                $role
-            );
+            Role::create($role);
         }
-
-        $this->command->info('Roles creados exitosamente: Administrador, Gerente, Técnico, Contador');
     }
 }

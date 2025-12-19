@@ -4,70 +4,52 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
 
 class Panel extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'panel_id';
-    
     protected $fillable = [
         'brand',
         'model',
         'power',
         'type',
+        'price',
         'technical_sheet_url',
-        'price'
     ];
 
     protected $casts = [
-        'power' => 'float',
-        'price' => 'float',
+        'power' => 'decimal:2',
+        'price' => 'decimal:2',
     ];
 
-    // Accessor para obtener la URL completa del archivo PDF
-    public function getTechnicalSheetUrlAttribute($value)
+    public function scopeActive($query)
     {
-        if ($value && Storage::disk('public')->exists($value)) {
-            return asset('storage/' . $value);
-        }
-        return $value;
+        return $query->where('is_active', true);
     }
 
-    // Scope para filtrar por marca
     public function scopeByBrand($query, $brand)
     {
-        return $query->where('brand', 'like', '%' . $brand . '%');
+        return $query->where('brand', $brand);
     }
 
-    // Scope para filtrar por tipo
     public function scopeByType($query, $type)
     {
         return $query->where('type', $type);
     }
 
-    // Scope para filtrar por rango de potencia
-    public function scopeByPowerRange($query, $minPower = null, $maxPower = null)
+    public function scopeByPowerRange($query, $minPower, $maxPower)
     {
-        if ($minPower) {
-            $query->where('power', '>=', $minPower);
-        }
-        if ($maxPower) {
-            $query->where('power', '<=', $maxPower);
-        }
-        return $query;
+        return $query->whereBetween('power', [$minPower, $maxPower]);
     }
 
-    // Scope para filtrar por rango de precio
-    public function scopeByPriceRange($query, $minPrice = null, $maxPrice = null)
+    public function getFullName(): string
     {
-        if ($minPrice) {
-            $query->where('price', '>=', $minPrice);
-        }
-        if ($maxPrice) {
-            $query->where('price', '<=', $maxPrice);
-        }
-        return $query;
+        return $this->brand . ' ' . $this->model . ' (' . $this->power . ' W)';
+    }
+
+    public function getPowerKw(): float
+    {
+        return $this->power / 1000;
     }
 }

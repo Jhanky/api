@@ -24,7 +24,7 @@ class CostCenterController extends Controller
             }
 
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'cost_center_name');
+            $sortBy = $request->get('sort_by', 'name');
             $sortOrder = $request->get('sort_order', 'asc');
             $query->orderBy($sortBy, $sortOrder);
 
@@ -61,10 +61,17 @@ class CostCenterController extends Controller
     {
         try {
             $request->validate([
-                'cost_center_name' => 'required|string|max:255'
+                'name' => 'required|string|max:255',
+                'code' => 'nullable|string|max:20|unique:cost_centers,code'
             ]);
 
-            $costCenter = CostCenter::create($request->all());
+            $costCenter = CostCenter::create([
+                'name' => $request->name,
+                'code' => $request->code,
+                'description' => $request->description,
+                'department_id' => $request->department_id,
+                'is_active' => $request->is_active ?? true
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -130,10 +137,17 @@ class CostCenterController extends Controller
             $costCenter = CostCenter::findOrFail($id);
 
             $request->validate([
-                'cost_center_name' => 'required|string|max:255'
+                'name' => 'required|string|max:255',
+                'code' => 'nullable|string|max:20'
             ]);
 
-            $costCenter->update($request->all());
+            $costCenter->update([
+                'name' => $request->name ?? $costCenter->name,
+                'code' => $request->code ?? $costCenter->code,
+                'description' => $request->description ?? $costCenter->description,
+                'department_id' => $request->department_id ?? $costCenter->department_id,
+                'is_active' => $request->is_active ?? $costCenter->is_active
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -330,7 +344,8 @@ class CostCenterController extends Controller
                 'data' => [
                     'cost_center' => [
                         'cost_center_id' => $costCenter->cost_center_id,
-                        'cost_center_name' => $costCenter->cost_center_name
+                        'name' => $costCenter->name,
+                        'code' => $costCenter->code
                     ],
                     'invoices' => $invoices
                 ]

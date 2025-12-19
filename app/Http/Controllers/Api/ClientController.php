@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Services\ClientService;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -11,64 +13,36 @@ use Illuminate\Support\Facades\Auth;
 
 class ClientController extends Controller
 {
+    use ApiResponseTrait;
+
+    protected ClientService $clientService;
+
+    public function __construct(ClientService $clientService)
+    {
+        $this->clientService = $clientService;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Client::with('user:id,name,email');
-
-            // Filtros
-            if ($request->has('search')) {
-                $search = $request->get('search');
-                $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('nic', 'like', "%{$search}%")
-                      ->orWhere('address', 'like', "%{$search}%");
-                });
-            }
-
-            if ($request->has('client_type')) {
-                $query->byType($request->get('client_type'));
-            }
-
-            if ($request->has('department')) {
-                $query->byDepartment($request->get('department'));
-            }
-
-            if ($request->has('city')) {
-                $query->byCity($request->get('city'));
-            }
-
-            if ($request->has('is_active')) {
-                $query->where('is_active', $request->boolean('is_active'));
-            }
-
-            if ($request->has('user_id')) {
-                $query->where('user_id', $request->get('user_id'));
-            }
-
-            // Ordenamiento
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
-            $query->orderBy($sortBy, $sortOrder);
-
-            // Paginación
-            $perPage = $request->get('per_page', 15);
-            $clients = $query->paginate($perPage);
-
-            return response()->json([
-                'success' => true,
-                'data' => $clients,
-                'message' => 'Clients retrieved successfully'
+            $filters = $request->only([
+                'search', 'client_type_id', 'department_id', 'city_id',
+                'is_active', 'responsible_user_id', 'min_consumption',
+                'max_consumption', 'sort_by', 'sort_order'
             ]);
+
+            $perPage = $request->get('per_page', 15);
+            $clients = $this->clientService->getClients($filters, $perPage);
+
+            return $this->paginationResponse(
+                $clients,
+                'Clientes obtenidos exitosamente'
+            );
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error retrieving clients',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al obtener los clientes');
         }
     }
 
@@ -80,44 +54,40 @@ class ClientController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'nic' => 'required|string|max:50|unique:clients,nic',
-                'client_type' => 'required|string|max:50',
+                'client_type_id' => 'required|exists:client_types,id',
                 'name' => 'required|string|max:100',
-                'department' => 'required|string|max:100',
-                'city' => 'required|string|max:100',
+                'document_type' => 'required|string|max:20',
+                'document_number' => 'required|string|max:50|unique:clients,document_number',
+                'email' => 'nullable|email|max:100',
+                'phone' => 'nullable|string|max:20',
+                'mobile' => 'nullable|string|max:20',
+                'department_id' => 'required|exists:departments,id',
+                'city_id' => 'required|exists:cities,id',
                 'address' => 'required|string',
                 'monthly_consumption_kwh' => 'required|numeric|min:0',
-                'energy_rate' => 'required|numeric|min:0',
-                'network_type' => 'required|string|max:50',
-                // Remover esta línea: 'user_id' => 'required|exists:users,id',
-                'is_active' => 'boolean'
+                'tariff_cop_kwh' => 'required|numeric|min:0',
+                'responsible_user_id' => 'nullable|exists:users,id',
+                'notes' => 'nullable|string',
+                'is_active' => 'boolean',
+                'primary_contact' => 'nullable|array',
+                'primary_contact.name' => 'required_with:primary_contact|string|max:100',
+                'primary_contact.email' => 'nullable|email|max:100',
+                'primary_contact.phone' => 'nullable|string|max:20',
+                'primary_contact.position' => 'nullable|string|max:100'
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation errors',
-                    'errors' => $validator->errors()
-                ], 422);
+                return $this->validationErrorResponse($validator->errors()->toArray());
             }
 
-            // Agregar el user_id del usuario autenticado
             $data = $request->all();
-            $data['user_id'] = Auth::id();
+            $data['responsible_user_id'] = $data['responsible_user_id'] ?? Auth::id();
 
-            $client = Client::create($data);
-            $client->load('user:id,name,email');
+            $client = $this->clientService->createClient($data);
 
-            return response()->json([
-                'success' => true,
-                'data' => $client,
-                'message' => 'Client created successfully'
-            ], 201);
+            return $this->createdResponse($client, 'Cliente creado exitosamente');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error creating client',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al crear el cliente');
         }
     }
 
@@ -127,19 +97,11 @@ class ClientController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $client = Client::with('user:id,name,email')->findOrFail($id);
+            $client = $this->clientService->getClientById((int) $id);
 
-            return response()->json([
-                'success' => true,
-                'data' => $client,
-                'message' => 'Client retrieved successfully'
-            ]);
+            return $this->successResponse($client, 'Cliente obtenido exitosamente');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Client not found',
-                'error' => $e->getMessage()
-            ], 404);
+            return $this->handleException($e, 'Cliente no encontrado');
         }
     }
 
@@ -152,41 +114,45 @@ class ClientController extends Controller
             $client = Client::findOrFail($id);
 
             $validator = Validator::make($request->all(), [
-                'nic' => 'sometimes|required|string|max:50|unique:clients,nic,' . $id . ',client_id',
-                'client_type' => 'sometimes|required|string|max:50',
+                'nic' => 'sometimes|required|string|max:50|unique:clients,nic,' . $id,
+                'client_type_id' => 'sometimes|required|exists:client_types,id',
                 'name' => 'sometimes|required|string|max:100',
-                'department' => 'sometimes|required|string|max:100',
-                'city' => 'sometimes|required|string|max:100',
+                'document_type' => 'sometimes|required|string|max:20',
+                'document_number' => 'sometimes|required|string|max:50|unique:clients,document_number,' . $id,
+                'email' => 'nullable|email|max:100',
+                'phone' => 'nullable|string|max:20',
+                'mobile' => 'nullable|string|max:20',
+                'department_id' => 'sometimes|required|exists:departments,id',
+                'city_id' => 'sometimes|required|exists:cities,id',
                 'address' => 'sometimes|required|string',
                 'monthly_consumption_kwh' => 'sometimes|required|numeric|min:0',
-                'energy_rate' => 'sometimes|required|numeric|min:0',
-                'network_type' => 'sometimes|required|string|max:50',
-                'user_id' => 'sometimes|required|exists:users,id',
-                'is_active' => 'boolean'
+                'tariff_cop_kwh' => 'sometimes|required|numeric|min:0',
+                'responsible_user_id' => 'nullable|exists:users,id',
+                'notes' => 'nullable|string',
+                'is_active' => 'boolean',
+                'primary_contact' => 'nullable|array',
+                'primary_contact.name' => 'required_with:primary_contact|string|max:100',
+                'primary_contact.email' => 'nullable|email|max:100',
+                'primary_contact.phone' => 'nullable|string|max:20',
+                'primary_contact.position' => 'nullable|string|max:100'
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation errors',
-                    'errors' => $validator->errors()
-                ], 422);
+                return $this->validationErrorResponse($validator->errors()->toArray());
             }
 
-            $client->update($request->all());
-            $client->load('user:id,name,email');
+            $data = $request->all();
+            // Si no se envía responsible_user_id, mantener el valor actual
+            // Solo asignar Auth::id() si es una creación nueva
+            if (!isset($data['responsible_user_id'])) {
+                unset($data['responsible_user_id']); // No modificar el campo existente
+            }
 
-            return response()->json([
-                'success' => true,
-                'data' => $client,
-                'message' => 'Client updated successfully'
-            ]);
+            $client = $this->clientService->updateClient($client, $data);
+
+            return $this->updatedResponse($client, 'Cliente actualizado exitosamente');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error updating client',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al actualizar el cliente');
         }
     }
 
@@ -197,18 +163,11 @@ class ClientController extends Controller
     {
         try {
             $client = Client::findOrFail($id);
-            $client->delete();
+            $this->clientService->deleteClient($client);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Client deleted successfully'
-            ]);
+            return $this->deletedResponse('Cliente eliminado exitosamente');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error deleting client',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al eliminar el cliente');
         }
     }
 
@@ -218,22 +177,12 @@ class ClientController extends Controller
     public function getByUser(string $userId): JsonResponse
     {
         try {
-            $clients = Client::where('user_id', $userId)
-                           ->active()
-                           ->with('user:id,name,email')
-                           ->get();
+            $onlyActive = request()->boolean('active_only', true);
+            $clients = $this->clientService->getClientsByUser((int) $userId, $onlyActive);
 
-            return response()->json([
-                'success' => true,
-                'data' => $clients,
-                'message' => 'User clients retrieved successfully'
-            ]);
+            return $this->successResponse($clients, 'Clientes del usuario obtenidos exitosamente');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error retrieving user clients',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al obtener los clientes del usuario');
         }
     }
 
@@ -243,34 +192,38 @@ class ClientController extends Controller
     public function statistics(): JsonResponse
     {
         try {
-            $stats = [
-                'total_clients' => Client::count(),
-                'active_clients' => Client::active()->count(),
-                'inactive_clients' => Client::where('is_active', false)->count(),
-                'clients_by_type' => Client::selectRaw('client_type, COUNT(*) as count')
-                                          ->groupBy('client_type')
-                                          ->get(),
-                'clients_by_department' => Client::selectRaw('department, COUNT(*) as count')
-                                                ->groupBy('department')
-                                                ->orderBy('count', 'desc')
-                                                ->limit(10)
-                                                ->get(),
-                'total_consumption' => Client::sum('monthly_consumption_kwh'),
-                'average_consumption' => Client::avg('monthly_consumption_kwh'),
-                'average_energy_rate' => Client::avg('energy_rate')
-            ];
+            $stats = $this->clientService->getClientStatistics();
 
-            return response()->json([
-                'success' => true,
-                'data' => $stats,
-                'message' => 'Client statistics retrieved successfully'
-            ]);
+            return $this->successResponse($stats, 'Estadísticas de clientes obtenidas exitosamente');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error retrieving statistics',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al obtener las estadísticas');
+        }
+    }
+
+    /**
+     * Bulk delete clients
+     */
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'client_ids' => 'required|array|min:1|max:50', // Máximo 50 para evitar sobrecarga
+                'client_ids.*' => 'required|integer|exists:clients,id'
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validationErrorResponse($validator->errors()->toArray());
+            }
+
+            $clientIds = $request->input('client_ids');
+            $deletedCount = $this->clientService->bulkDeleteClients($clientIds);
+
+            return $this->successResponse([
+                'deleted_count' => $deletedCount,
+                'client_ids' => $clientIds
+            ], "{$deletedCount} cliente(s) eliminado(s) exitosamente");
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al eliminar los clientes');
         }
     }
 }

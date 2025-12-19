@@ -3,7 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Location;
+use App\Models\Department;
+use App\Models\City;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -16,11 +17,16 @@ class LocationController extends Controller
     public function getDepartments(): JsonResponse
     {
         try {
-            $departments = Location::select('department')
-                                 ->distinct()
-                                 ->orderBy('department')
-                                 ->pluck('department');
-            
+            $departments = Department::select('id', 'name')
+                                   ->orderBy('name')
+                                   ->get()
+                                   ->map(function($department) {
+                                       return [
+                                           'id' => $department->id,
+                                           'name' => $department->name
+                                       ];
+                                   });
+
             return response()->json([
                 'success' => true,
                 'data' => $departments
@@ -40,23 +46,32 @@ class LocationController extends Controller
     public function getCitiesByDepartment(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'department' => 'required|string'
+            'department' => 'required|integer|exists:departments,id'
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Departamento requerido',
+                'message' => 'ID de departamento requerido y válido',
                 'errors' => $validator->errors()
             ], 422);
         }
 
         try {
-            $cities = Location::where('department', $request->department)
-                            ->select('municipality', 'location_id', 'radiation')
-                            ->orderBy('municipality')
-                            ->get();
-            
+            $cities = City::where('department_id', $request->department)
+                         ->with('department')
+                         ->select('id', 'name', 'department_id')
+                         ->orderBy('name')
+                         ->get()
+                         ->map(function($city) {
+                             return [
+                                 'id' => $city->id,
+                                 'location_id' => $city->id,
+                                 'municipality' => $city->name,
+                                 'department_name' => $city->department->name ?? null
+                             ];
+                         });
+
             return response()->json([
                 'success' => true,
                 'data' => $cities

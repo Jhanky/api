@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Invoice extends Model
 {
@@ -12,558 +15,191 @@ class Invoice extends Model
     protected $primaryKey = 'invoice_id';
 
     protected $fillable = [
-        // Información básica de la factura
         'invoice_number',
-        'invoice_date',
-        'due_date',
-
-        // Información del proveedor y centro de costos
-        'provider_id',
+        'supplier_id',
         'cost_center_id',
-
-        // Valores contables (orden lógico contable)
-        'subtotal',           // Subtotal antes de impuestos
-        'iva_amount',         // Valor del IVA (19% del subtotal)
-        'retention',         // Retención en la fuente
-        'has_retention',     // Indica si aplica retención
-        'total_amount',      // Total a pagar (subtotal + IVA - retención)
-
-        // Estado y método de pago
+        'amount_before_iva',
+        'iva_percentage',
+        'total_value',
         'status',
-        'sale_type',          // Tipo de venta: CONTADO o CREDITO
-        'payment_method_id',  // ID del método de pago
-
-        // Documentos y archivos
-        'payment_support',   // Archivo de soporte de pago
-        'invoice_file',      // Archivo de la factura
-
-        // Descripción y metadatos
-        'description'
+        'payment_type',
+        'issue_date',
+        'due_date',
+        'payment_date',
+        'invoice_file_path',
+        'invoice_file_name',
+        'invoice_file_type',
+        'invoice_file_size',
+        'notes',
+        'created_by',
+        'updated_by',
     ];
 
     protected $casts = [
-        'invoice_date' => 'date',
-        'due_date' => 'date',
-        'total_amount' => 'decimal:2',
-        'subtotal' => 'decimal:2',
+        'amount_before_iva' => 'decimal:2',
+        'iva_percentage' => 'decimal:2',
         'iva_amount' => 'decimal:2',
-        'retention' => 'decimal:2',
-        'has_retention' => 'boolean'
+        'total_value' => 'decimal:2',
+        'issue_date' => 'date',
+        'due_date' => 'date',
+        'payment_date' => 'date',
+        'invoice_file_size' => 'integer',
     ];
 
-    // ========================================
-    // CONSTANTES DE MÉTODOS DE PAGO
-    // ========================================
-    
-    const PAYMENT_METHOD_TCD = 'Transferencia desde cuenta Davivienda E4(TCD)';
-    const PAYMENT_METHOD_CP = 'Transferencia desde Cuenta personal(CP)';
-    const PAYMENT_METHOD_EF = 'Efectivo(EF)';
-    
     /**
-     * Obtener todos los métodos de pago disponibles
+     * Get the supplier that owns the invoice.
      */
-    public static function getPaymentMethods()
+    public function supplier(): BelongsTo
     {
-        return [
-            self::PAYMENT_METHOD_TCD => 'Transferencia desde cuenta Davivienda E4(TCD)',
-            self::PAYMENT_METHOD_CP => 'Transferencia desde Cuenta personal(CP)',
-            self::PAYMENT_METHOD_EF => 'Efectivo(EF)'
-        ];
+        return $this->belongsTo(Supplier::class, 'supplier_id', 'supplier_id');
     }
 
-    // Relaciones
-    public function provider()
-    {
-        return $this->belongsTo(Provider::class, 'provider_id', 'provider_id');
-    }
-
-    public function costCenter()
+    /**
+     * Get the cost center that owns the invoice.
+     */
+    public function costCenter(): BelongsTo
     {
         return $this->belongsTo(CostCenter::class, 'cost_center_id', 'cost_center_id');
     }
 
-    public function paymentMethod()
+    /**
+     * Get the user who created the invoice.
+     */
+    public function creator(): BelongsTo
     {
-        return $this->belongsTo(PaymentMethod::class, 'payment_method_id');
+        return $this->belongsTo(User::class, 'created_by');
     }
 
-    // ========================================
-    // SCOPES BÁSICOS DE FILTROS
-    // ========================================
-    
+    /**
+     * Get the user who last updated the invoice.
+     */
+    public function updater(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /**
+     * Get the payment allocations for the invoice.
+     */
+    public function paymentAllocations(): HasMany
+    {
+        return $this->hasMany(PaymentAllocation::class, 'invoice_id', 'invoice_id');
+    }
+
+    /**
+     * Scope to get only pending invoices.
+     */
+    public function scopePending($query)
+    {
+        return $query->where('status', 'pendiente');
+    }
+
+    /**
+     * Scope to get only paid invoices.
+     */
+    public function scopePaid($query)
+    {
+        return $query->where('status', 'pagada');
+    }
+
+    /**
+     * Scope to get overdue invoices.
+     */
+    public function scopeOverdue($query)
+    {
+        return $query->where('due_date', '<', now())->where('status', '!=', 'pagada');
+    }
+
+    /**
+     * Scope to search invoices by number, supplier name or notes.
+     */
+    public function scopeSearch($query, $search)
+    {
+        return $query->where(function ($q) use ($search) {
+            $q->where('invoice_number', 'like', "%{$search}%")
+              ->orWhere('notes', 'like', "%{$search}%")
+              ->orWhereHas('supplier', function ($sq) use ($search) {
+                  $sq->where('name', 'like', "%{$search}%")
+                     ->orWhere('nit', 'like', "%{$search}%");
+              });
+        });
+    }
+
+    /**
+     * Scope to filter by status.
+     */
     public function scopeByStatus($query, $status)
     {
         return $query->where('status', $status);
     }
 
-    public function scopeByProvider($query, $providerId)
+    /**
+     * Scope to filter by supplier.
+     */
+    public function scopeBySupplier($query, $supplierId)
     {
-        return $query->where('provider_id', $providerId);
+        return $query->where('supplier_id', $supplierId);
     }
 
+    /**
+     * Scope to filter by cost center.
+     */
     public function scopeByCostCenter($query, $costCenterId)
     {
         return $query->where('cost_center_id', $costCenterId);
     }
 
-    public function scopeSearch($query, $search)
-    {
-        return $query->where(function($q) use ($search) {
-            $q->where('invoice_number', 'like', '%' . $search . '%')
-              ->orWhereHas('provider', function($providerQuery) use ($search) {
-                  $providerQuery->where('provider_name', 'like', '%' . $search . '%');
-              })
-              ->orWhereHas('costCenter', function($costCenterQuery) use ($search) {
-                  $costCenterQuery->where('cost_center_name', 'like', '%' . $search . '%');
-              });
-        });
-    }
-
+    /**
+     * Scope to filter by invoice month.
+     */
     public function scopeByInvoiceMonth($query, $month)
     {
-        return $query->whereMonth('invoice_date', (int) $month);
+        return $query->whereMonth('issue_date', $month);
     }
 
+    /**
+     * Scope to filter by invoice year.
+     */
     public function scopeByInvoiceYear($query, $year)
     {
-        return $query->whereYear('invoice_date', (int) $year);
-    }
-
-    // ========================================
-    // MÉTODOS CONTABLES Y CÁLCULOS
-    // ========================================
-    
-    /**
-     * Calcula el valor del IVA (19% del subtotal)
-     * @return float
-     */
-    public function calculateIvaAmount()
-    {
-        if ($this->subtotal) {
-            return $this->subtotal * 0.19; // 19% de IVA
-        }
-        return 0;
+        return $query->whereYear('issue_date', $year);
     }
 
     /**
-     * Calcula el total a pagar (subtotal + IVA - retención)
-     * @return float
+     * Check if the invoice is overdue.
      */
-    public function calculateTotalAmount()
+    public function isOverdue(): bool
     {
-        $subtotal = $this->subtotal ?? 0;
-        $iva = $this->iva_amount ?? $this->calculateIvaAmount();
-        $retention = $this->retention ?? 0;
-        
-        return $subtotal + $iva - $retention;
+        return $this->due_date && $this->due_date->isPast() && $this->status !== 'pagada';
     }
 
     /**
-     * Obtiene el resumen contable de la factura
-     * @return array
+     * Get the total allocated amount.
      */
-    public function getAccountingSummary()
+    public function getTotalAllocatedAttribute(): float
     {
-        return [
-            'subtotal' => $this->subtotal ?? 0,
-            'iva_amount' => $this->iva_amount ?? $this->calculateIvaAmount(),
-            'retention' => $this->retention ?? 0,
-            'total_amount' => $this->total_amount ?? $this->calculateTotalAmount(),
-            'net_amount' => ($this->subtotal ?? 0) - ($this->retention ?? 0)
-        ];
+        return $this->paymentAllocations()->sum('allocated_amount');
     }
 
     /**
-     * Verifica si la factura está vencida
-     * @return bool
+     * Get the remaining amount to pay.
      */
-    public function isOverdue()
+    public function getRemainingAmountAttribute(): float
     {
-        return $this->due_date < now()->toDateString() && $this->status === 'PENDIENTE';
+        return $this->total_value - $this->total_allocated;
     }
 
     /**
-     * Calcula los días de vencimiento
-     * @return int
+     * Get the status label.
      */
-    public function getDaysOverdue()
+    public function getStatusLabelAttribute(): string
     {
-        if ($this->isOverdue()) {
-            return now()->diffInDays($this->due_date);
-        }
-        return 0;
-    }
-
-    // Mutator para calcular automáticamente el IVA cuando se actualiza el subtotal
-    public function setSubtotalAttribute($value)
-    {
-        $this->attributes['subtotal'] = $value;
-        if ($value) {
-            $this->attributes['iva_amount'] = $value * 0.19;
-        }
-    }
-
-    // Scope para filtrar por método de pago
-    public function scopeByPaymentMethod($query, $method)
-    {
-        return $query->where('payment_method', $method);
-    }
-
-    // Scope para facturas con soporte de pago
-    public function scopeWithPaymentSupport($query)
-    {
-        return $query->whereNotNull('payment_support');
-    }
-
-    // Scope para facturas con archivo de factura
-    public function scopeWithInvoiceFile($query)
-    {
-        return $query->whereNotNull('invoice_file');
-    }
-
-    // ========================================
-    // SCOPES CONTABLES ADICIONALES
-    // ========================================
-    
-    /**
-     * Scope para facturas con retención
-     */
-    public function scopeWithRetention($query)
-    {
-        return $query->where('retention', '>', 0);
-    }
-
-    /**
-     * Scope para facturas sin retención
-     */
-    public function scopeWithoutRetention($query)
-    {
-        return $query->where(function($q) {
-            $q->whereNull('retention')->orWhere('retention', 0);
-        });
-    }
-
-    /**
-     * Scope para facturas por rango de montos
-     */
-    public function scopeByAmountRange($query, $min, $max)
-    {
-        return $query->whereBetween('total_amount', [$min, $max]);
-    }
-
-    /**
-     * Scope para facturas con IVA
-     */
-    public function scopeWithIva($query)
-    {
-        return $query->where('iva_amount', '>', 0);
-    }
-
-    /**
-     * Scope para facturas exentas de IVA
-     */
-    public function scopeExemptFromIva($query)
-    {
-        return $query->where(function($q) {
-            $q->whereNull('iva_amount')->orWhere('iva_amount', 0);
-        });
-    }
-
-    /**
-     * Scope para facturas por período contable
-     */
-    public function scopeByAccountingPeriod($query, $startDate, $endDate)
-    {
-        return $query->whereBetween('invoice_date', [$startDate, $endDate]);
-    }
-
-    /**
-     * Scope para facturas pendientes de pago
-     */
-    public function scopePending($query)
-    {
-        return $query->where('status', 'PENDIENTE');
-    }
-
-    /**
-     * Scope para facturas pagadas
-     */
-    public function scopePaid($query)
-    {
-        return $query->where('status', 'PAGADA');
-    }
-
-    /**
-     * Scope para facturas vencidas
-     */
-    public function scopeOverdue($query)
-    {
-        return $query->where('due_date', '<', now()->toDateString())
-                    ->where('status', 'PENDIENTE');
-    }
-
-    /**
-     * Scope para facturas próximas a vencer (próximos 7 días)
-     */
-    public function scopeDueSoon($query, $days = 7)
-    {
-        return $query->where('due_date', '<=', now()->addDays($days)->toDateString())
-                    ->where('due_date', '>=', now()->toDateString())
-                    ->where('status', 'PENDIENTE');
-    }
-
-    // ========================================
-    // MÉTODOS PARA TIPOS DE VENTA
-    // ========================================
-    
-    /**
-     * Scope para facturas de contado
-     */
-    public function scopeCashSales($query)
-    {
-        return $query->where('sale_type', 'CONTADO');
-    }
-
-    /**
-     * Scope para facturas a crédito
-     */
-    public function scopeCreditSales($query)
-    {
-        return $query->where('sale_type', 'CREDITO');
-    }
-
-    /**
-     * Scope para facturas a crédito pendientes de pago
-     */
-    public function scopeCreditPending($query)
-    {
-        return $query->where('sale_type', 'CREDITO')
-                    ->where('status', 'PENDIENTE');
-    }
-
-    /**
-     * Scope para facturas a crédito ya pagadas
-     */
-    public function scopeCreditPaid($query)
-    {
-        return $query->where('sale_type', 'CREDITO')
-                    ->where('status', 'PAGADA');
-    }
-
-    /**
-     * Scope para facturas de contado pagadas
-     */
-    public function scopeCashPaid($query)
-    {
-        return $query->where('sale_type', 'CONTADO')
-                    ->where('status', 'PAGADA');
-    }
-
-    /**
-     * Verifica si la factura es de contado
-     */
-    public function isCashSale()
-    {
-        return $this->sale_type === 'CONTADO';
-    }
-
-    /**
-     * Verifica si la factura es a crédito
-     */
-    public function isCreditSale()
-    {
-        return $this->sale_type === 'CREDITO';
-    }
-
-    /**
-     * Verifica si una factura a crédito ya fue pagada
-     */
-    public function isCreditPaid()
-    {
-        return $this->isCreditSale() && $this->status === 'PAGADA';
-    }
-
-    /**
-     * Verifica si una factura a crédito está pendiente
-     */
-    public function isCreditPending()
-    {
-        return $this->isCreditSale() && $this->status === 'PENDIENTE';
-    }
-
-    /**
-     * Obtiene el resumen de tipos de venta
-     */
-    public function getSaleTypeSummary()
-    {
-        return [
-            'sale_type' => $this->sale_type,
-            'status' => $this->status,
-            'is_cash' => $this->isCashSale(),
-            'is_credit' => $this->isCreditSale(),
-            'is_paid' => $this->status === 'PAGADA',
-            'is_pending' => $this->status === 'PENDIENTE',
-            'description' => $this->getSaleTypeDescription()
-        ];
-    }
-
-    /**
-     * Obtiene la descripción del tipo de venta
-     */
-    public function getSaleTypeDescription()
-    {
-        if ($this->isCashSale()) {
-            return $this->status === 'PAGADA' ? 'Venta de Contado (Pagada)' : 'Venta de Contado (Pendiente)';
-        } else {
-            return $this->status === 'PAGADA' ? 'Venta a Crédito (Pagada)' : 'Venta a Crédito (Pendiente)';
-        }
-    }
-
-    // ========================================
-    // MÉTODOS DE VERIFICACIÓN DE PAGO
-    // ========================================
-    
-    /**
-     * Verifica si el pago es por transferencia Davivienda
-     */
-    public function isTcdPayment()
-    {
-        return $this->paymentMethod && $this->paymentMethod->code === 'TCD';
-    }
-
-    /**
-     * Verifica si el pago es por transferencia personal
-     */
-    public function isCpPayment()
-    {
-        return $this->paymentMethod && $this->paymentMethod->code === 'CP';
-    }
-
-    /**
-     * Verifica si el pago es en efectivo
-     */
-    public function isEfPayment()
-    {
-        return $this->paymentMethod && $this->paymentMethod->code === 'EF';
-    }
-
-    /**
-     * Verifica si el pago es por transferencia (cualquiera)
-     */
-    public function isTransferPayment()
-    {
-        return $this->isTcdPayment() || $this->isCpPayment();
-    }
-
-    /**
-     * Obtiene la descripción corta del método de pago
-     */
-    public function getPaymentMethodShort()
-    {
-        return $this->paymentMethod ? $this->paymentMethod->code : 'N/A';
-    }
-
-    /**
-     * Obtiene el nombre del método de pago
-     */
-    public function getPaymentMethodName()
-    {
-        return $this->paymentMethod ? $this->paymentMethod->name : 'No especificado';
-    }
-
-    /**
-     * Obtiene el resumen completo del método de pago
-     */
-    public function getPaymentMethodSummary()
-    {
-        if (!$this->paymentMethod) {
-            return [
-                'method' => null,
-                'name' => 'No especificado',
-                'short' => 'N/A',
-                'is_transfer' => false,
-                'is_cash' => false,
-                'is_tcd' => false,
-                'is_cp' => false
-            ];
-        }
-
-        return [
-            'method' => $this->paymentMethod->name,
-            'name' => $this->paymentMethod->name,
-            'short' => $this->paymentMethod->code,
-            'is_transfer' => $this->isTransferPayment(),
-            'is_cash' => $this->isEfPayment(),
-            'is_tcd' => $this->isTcdPayment(),
-            'is_cp' => $this->isCpPayment()
-        ];
-    }
-
-    // ========================================
-    // MÉTODOS DE RETENCIÓN
-    // ========================================
-    
-    /**
-     * Verifica si la factura tiene retención aplicada
-     */
-    public function hasRetentionApplied()
-    {
-        return $this->has_retention;
-    }
-
-    /**
-     * Aplica retención a la factura
-     */
-    public function applyRetention($retentionAmount = null)
-    {
-        $this->has_retention = true;
-        
-        if ($retentionAmount !== null) {
-            $this->retention = $retentionAmount;
-        }
-        
-        $this->save();
-        $this->calculateTotalAmount();
-    }
-
-    /**
-     * Remueve la retención de la factura
-     */
-    public function removeRetention()
-    {
-        $this->has_retention = false;
-        $this->retention = 0;
-        $this->save();
-        $this->calculateTotalAmount();
-    }
-
-    /**
-     * Calcula el total considerando la retención
-     */
-    public function calculateTotalWithRetention()
-    {
-        if ($this->has_retention && $this->retention > 0) {
-            return $this->subtotal + $this->iva_amount - $this->retention;
-        }
-        
-        return $this->subtotal + $this->iva_amount;
-    }
-
-    /**
-     * Obtiene el resumen de retención
-     */
-    public function getRetentionSummary()
-    {
-        return [
-            'has_retention' => $this->has_retention,
-            'retention_amount' => $this->retention,
-            'subtotal' => $this->subtotal,
-            'iva_amount' => $this->iva_amount,
-            'total_without_retention' => $this->subtotal + $this->iva_amount,
-            'total_with_retention' => $this->calculateTotalWithRetention(),
-            'retention_percentage' => $this->has_retention && $this->subtotal > 0 
-                ? round(($this->retention / $this->subtotal) * 100, 2) 
-                : 0
-        ];
+        return match ($this->status) {
+            'pendiente' => 'Pendiente',
+            'pagada' => 'Pagada',
+            'parcial' => 'Pago Parcial',
+            'anulada' => 'Anulada',
+            default => $this->status,
+        };
     }
 }

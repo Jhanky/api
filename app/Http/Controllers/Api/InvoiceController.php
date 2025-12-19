@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
-use App\Models\Provider;
+use App\Models\Supplier;
 use App\Models\CostCenter;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -23,37 +23,46 @@ class InvoiceController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Invoice::with(['provider', 'costCenter', 'paymentMethod']);
+            $query = Invoice::with(['supplier', 'costCenter']);
 
-            // Búsqueda
-            if ($request->has('search') && $request->search) {
-                $query->search($request->search);
+            // Búsqueda - ignorar valores undefined o vacíos
+            $search = $request->get('search');
+            if ($search && $search !== 'undefined' && $search !== 'null') {
+                $query->search($search);
             }
 
-            // Filtros
-            if ($request->has('status') && $request->status) {
-                $query->byStatus($request->status);
+            // Filtro por estado - ignorar valores undefined o vacíos
+            $status = $request->get('status');
+            if ($status && $status !== 'undefined' && $status !== 'null' && $status !== 'all') {
+                $query->byStatus($status);
             }
 
-            if ($request->has('provider_id') && $request->provider_id) {
-                $query->byProvider($request->provider_id);
+            // Filtro por proveedor
+            $supplierId = $request->get('supplier_id');
+            if ($supplierId && $supplierId !== 'undefined' && $supplierId !== 'null') {
+                $query->bySupplier($supplierId);
             }
 
-            if ($request->has('cost_center_id') && $request->cost_center_id) {
-                $query->byCostCenter($request->cost_center_id);
+            // Filtro por centro de costo
+            $costCenterId = $request->get('cost_center_id');
+            if ($costCenterId && $costCenterId !== 'undefined' && $costCenterId !== 'null') {
+                $query->byCostCenter($costCenterId);
             }
 
-            if ($request->has('overdue') && $request->overdue) {
+            // Filtro de vencidas
+            if ($request->boolean('overdue')) {
                 $query->overdue();
             }
 
             // Filtro por mes/año de la factura
-            if ($request->has('invoice_month') && $request->invoice_month) {
-                $query->byInvoiceMonth($request->invoice_month);
+            $invoiceMonth = $request->get('invoice_month');
+            if ($invoiceMonth && $invoiceMonth !== 'undefined' && is_numeric($invoiceMonth)) {
+                $query->byInvoiceMonth($invoiceMonth);
             }
 
-            if ($request->has('invoice_year') && $request->invoice_year) {
-                $query->byInvoiceYear($request->invoice_year);
+            $invoiceYear = $request->get('invoice_year');
+            if ($invoiceYear && $invoiceYear !== 'undefined' && is_numeric($invoiceYear)) {
+                $query->byInvoiceYear($invoiceYear);
             }
 
             // Ordenamiento
@@ -1005,6 +1014,191 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error interno del servidor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Store a new invoice with automatic supplier creation.
+     * If supplier NIT exists, uses existing supplier.
+     * If not, creates a new supplier and then creates the invoice.
+     */
+    public function storeWithSupplier(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                // Datos del proveedor
+                'supplier_name' => 'required|string|max:255',
+                'supplier_nit' => 'required|string|max:50',
+                // Datos de la factura
+                'invoice_number' => 'required|string|max:100',
+                'invoice_date' => 'required|date',
+                'due_date' => 'nullable|date',
+                'subtotal' => 'nullable|numeric|min:0',
+                'iva_amount' => 'nullable|numeric|min:0',
+                'total_amount' => 'required|numeric|min:0',
+                'description' => 'nullable|string|max:1000',
+                'cost_center_id' => 'required|exists:cost_centers,cost_center_id',
+                'invoice_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:10240' // 10MB max
+            ]);
+
+            \DB::beginTransaction();
+
+            // 1. Buscar o crear proveedor por NIT
+            $supplier = Supplier::where('nit', $request->supplier_nit)->first();
+            
+            if (!$supplier) {
+                $supplier = Supplier::create([
+                    'name' => $request->supplier_name,
+                    'nit' => $request->supplier_nit,
+                    'is_active' => true
+                ]);
+                \Log::info('Nuevo proveedor creado: ' . $supplier->name . ' (NIT: ' . $supplier->nit . ')');
+            }
+
+            // 2. Preparar datos de la factura
+            $invoiceData = [
+                'invoice_number' => $request->invoice_number,
+                'issue_date' => $request->invoice_date,
+                'due_date' => $request->due_date,
+                'amount_before_iva' => $request->subtotal ?? 0,
+                'iva_percentage' => $request->iva_percentage ?? 19,
+                'total_value' => $request->total_amount,
+                'notes' => $request->description,
+                'status' => 'pendiente',
+                'payment_type' => 'total',
+                'supplier_id' => $supplier->supplier_id,
+                'cost_center_id' => $request->cost_center_id,
+                'created_by' => auth()->id() ?? 1
+            ];
+
+            // 3. Manejar archivo de factura
+            if ($request->hasFile('invoice_file')) {
+                $invoiceFile = $request->file('invoice_file');
+                $invoiceFilePath = $invoiceFile->store('invoices/invoice_files', 'public');
+                $invoiceData['invoice_file_path'] = $invoiceFilePath;
+                $invoiceData['invoice_file_name'] = $invoiceFile->getClientOriginalName();
+                $invoiceData['invoice_file_type'] = $invoiceFile->getClientMimeType();
+                $invoiceData['invoice_file_size'] = $invoiceFile->getSize();
+                \Log::info('Archivo de factura guardado: ' . $invoiceFilePath);
+            }
+
+            // 4. Crear factura
+            $invoice = Invoice::create($invoiceData);
+            $invoice->load(['supplier', 'costCenter']);
+
+            \DB::commit();
+
+            \Log::info('Factura creada exitosamente: ' . $invoice->invoice_number);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Factura registrada exitosamente',
+                'data' => [
+                    'invoice' => $invoice,
+                    'supplier' => $supplier,
+                    'supplier_created' => !Supplier::where('nit', $request->supplier_nit)->where('supplier_id', '!=', $supplier->supplier_id)->exists()
+                ]
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \DB::rollBack();
+            \Log::error('Error al crear factura con proveedor: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al registrar factura',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all cost centers and projects for unified dropdown.
+     */
+    public function getCostCentersAndProjects(): JsonResponse
+    {
+        try {
+            // Obtener todos los centros de costo activos
+            $costCenters = CostCenter::where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->map(function ($cc) {
+                    return [
+                        'id' => $cc->cost_center_id,
+                        'name' => $cc->name,
+                        'code' => $cc->code,
+                        'label' => ($cc->code ? $cc->code . ' - ' : '') . $cc->name
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'cost_centers' => $costCenters
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error al obtener centros de costo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener centros de costo',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Download the invoice file.
+     */
+    public function downloadFile($id)
+    {
+        try {
+            $invoice = Invoice::findOrFail($id);
+            
+            if (!$invoice->invoice_file_path) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Esta factura no tiene archivo adjunto'
+                ], 404);
+            }
+
+            $filePath = storage_path('app/public/' . $invoice->invoice_file_path);
+            
+            if (!file_exists($filePath)) {
+                \Log::error('Archivo no encontrado: ' . $filePath);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Archivo no encontrado en el servidor'
+                ], 404);
+            }
+
+            $fileName = $invoice->invoice_file_name ?: basename($invoice->invoice_file_path);
+            $mimeType = $invoice->invoice_file_type ?: mime_content_type($filePath);
+
+            return response()->file($filePath, [
+                'Content-Type' => $mimeType,
+                'Content-Disposition' => 'inline; filename="' . $fileName . '"'
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Factura no encontrada'
+            ], 404);
+        } catch (\Exception $e) {
+            \Log::error('Error al descargar archivo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al descargar archivo',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

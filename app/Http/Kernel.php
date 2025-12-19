@@ -89,7 +89,6 @@ class Kernel extends HttpKernel
         'platform.detection' => \App\Http\Middleware\PlatformDetection::class,
         
         // Middleware específicos para API (Web)
-        'api.permission' => \App\Http\Middleware\Api\CheckPermission::class,
         'api.role' => \App\Http\Middleware\Api\CheckRole::class,
         'api.web.optimization' => \App\Http\Middleware\Api\WebOptimization::class,
         

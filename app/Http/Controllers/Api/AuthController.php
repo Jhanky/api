@@ -17,73 +17,110 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-            'phone' => 'nullable|string|max:20',
-            'birth_date' => 'nullable|date',
-            'gender' => 'nullable|in:male,female,other',
-            'address' => 'nullable|string|max:500',
-        ]);
+        try {
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'username' => 'required|string|max:255|unique:users,username',
+                'email' => 'required|string|email|max:255|unique:users,email',
+                'password' => 'required|string|min:8|confirmed',
+                'phone' => 'nullable|string|max:20',
+                'mobile' => 'nullable|string|max:20',
+                'position' => 'nullable|string|max:100',
+            ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'phone' => $request->phone,
-            'birth_date' => $request->birth_date,
-            'gender' => $request->gender,
-            'address' => $request->address,
-        ]);
+            $user = User::create([
+                'name' => $request->name,
+                'username' => $request->username,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'phone' => $request->phone,
+                'mobile' => $request->mobile,
+                'position' => $request->position,
+                'is_active' => true,
+            ]);
 
-        // Assign default role
-        $user->assignRole('user');
+            // Assign default role
+            $user->assignRole('user');
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+            $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
-            'message' => 'User registered successfully',
-            'user' => $user->load('roles'),
-            'token' => $token,
-        ], Response::HTTP_CREATED);
+            \Log::info('AuthController: User registered successfully', [
+                'user_id' => $user->id,
+                'username' => $user->username,
+                'email' => $user->email,
+            ]);
+
+            return $this->createdResponse([
+                'user' => $user->load('roles'),
+                'token' => $token,
+            ], 'Usuario registrado exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al registrar usuario');
+        }
     }
 
     
     public function login(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+            'username' => 'required_without:email|string|max:255',
+            'email' => 'required_without:username|email|max:255',
+            'password' => 'required|string|min:1',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        // Buscar usuario por email o username
+        $user = User::where(function ($query) use ($request) {
+            if ($request->filled('email')) {
+                $query->where('email', $request->email);
+            }
+            if ($request->filled('username')) {
+                $query->orWhere('username', $request->username);
+            }
+        })->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+            \Log::warning('AuthController: Login failed - invalid credentials', [
+                'identifier' => $request->email ?? $request->username,
+                'identifier_type' => $request->filled('email') ? 'email' : 'username'
             ]);
+
+            return $this->errorResponse(
+                'Las credenciales proporcionadas son incorrectas',
+                [],
+                401
+            );
         }
 
         if (!$user->is_active) {
-            return response()->json([
-                'message' => 'Account is deactivated',
-            ], Response::HTTP_FORBIDDEN);
-        }
+            \Log::warning('AuthController: Login failed - account deactivated', [
+                'user_id' => $user->id,
+                'identifier' => $request->email ?? $request->username
+            ]);
 
-        // Update last login info
-        $user->update([
-            'last_login_at' => now(),
-            'last_login_ip' => $request->ip(),
-        ]);
+            return $this->forbiddenResponse('La cuenta está desactivada');
+        }
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
-            'message' => 'Login successful',
-            'user' => $user->load('roles'),
-            'token' => $token,
+        // Cargar roles del usuario explícitamente
+        $userWithRoles = $user->load('roles');
+
+        // Actualizar último login
+        $user->update(['last_login_at' => now()]);
+
+        \Log::info('AuthController: Login successful', [
+            'user_id' => $user->id,
+            'identifier' => $request->email ?? $request->username,
+            'identifier_type' => $request->filled('email') ? 'email' : 'username',
+            'roles_loaded' => $userWithRoles->relationLoaded('roles'),
+            'roles_count' => $userWithRoles->roles->count(),
+            'user_roles' => $userWithRoles->roles->pluck('name')->toArray()
         ]);
+
+        return $this->successResponse([
+            'user' => $userWithRoles,
+            'token' => $token,
+        ], 'Inicio de sesión exitoso');
     }
 
     /**
@@ -91,11 +128,19 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        try {
+            $user = $request->user();
+            $user->currentAccessToken()->delete();
 
-        return response()->json([
-            'message' => 'Logged out successfully',
-        ]);
+            \Log::info('AuthController: User logged out', [
+                'user_id' => $user->id,
+                'username' => $user->username,
+            ]);
+
+            return $this->successResponse(null, 'Sesión cerrada exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al cerrar sesión');
+        }
     }
 
     /**
@@ -103,9 +148,15 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        return response()->json([
-            'user' => $request->user()->load('roles.permissions'),
-        ]);
+        try {
+            $user = $request->user()->load('roles');
+
+            return $this->successResponse([
+                'user' => $user,
+            ], 'Información del usuario obtenida exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al obtener información del usuario');
+        }
     }
 
     /**
@@ -113,13 +164,21 @@ class AuthController extends Controller
      */
     public function refresh(Request $request)
     {
-        $user = $request->user();
-        $user->currentAccessToken()->delete();
-        $token = $user->createToken('auth_token')->plainTextToken;
+        try {
+            $user = $request->user();
+            $user->currentAccessToken()->delete();
+            $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
-            'message' => 'Token refreshed successfully',
-            'token' => $token,
-        ]);
+            \Log::info('AuthController: Token refreshed', [
+                'user_id' => $user->id,
+                'username' => $user->username,
+            ]);
+
+            return $this->successResponse([
+                'token' => $token,
+            ], 'Token actualizado exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al actualizar token');
+        }
     }
 }

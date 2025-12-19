@@ -10,7 +10,7 @@ class QuotationStatusListController extends Controller
 {
     public function index(): JsonResponse
     {
-        $statuses = QuotationStatus::all(['status_id', 'name', 'description', 'color', 'is_active']);
+        $statuses = QuotationStatus::all(['id', 'name', 'description', 'color', 'is_active']);
         return response()->json($statuses);
     }
 }

@@ -14,26 +14,61 @@ class RoleController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Role::with('users');
+        try {
+            \Log::info('🔍 RoleController@index - Iniciando consulta de roles', [
+                'params' => $request->all(),
+                'user_id' => auth()->id()
+            ]);
 
-        // Search functionality
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('display_name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+            $query = Role::with('users');
+
+            // Search functionality
+            if ($request->has('search') && !empty($request->search)) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('slug', 'like', "%{$search}%")
+                      ->orWhere('description', 'like', "%{$search}%");
+                });
+                \Log::info('🔍 Aplicando filtro de búsqueda', ['search' => $search]);
+            }
+
+            // Filter by status
+            if ($request->has('is_active')) {
+                $isActive = $request->boolean('is_active');
+                $query->where('is_active', $isActive);
+                \Log::info('🔍 Aplicando filtro de estado', ['is_active' => $isActive]);
+            }
+
+            $perPage = $request->get('per_page', 15);
+            $roles = $query->paginate($perPage);
+
+            \Log::info('📊 Resultados de consulta', [
+                'total_roles' => $roles->total(),
+                'current_page' => $roles->currentPage(),
+                'per_page' => $roles->perPage(),
+                'items_count' => $roles->count()
+            ]);
+
+            // Agregar users_count a cada rol
+            $roles->getCollection()->transform(function ($role) {
+                $role->users_count = $role->users()->count();
+                return $role;
             });
+
+            return $this->paginationResponse(
+                $roles,
+                'Roles obtenidos exitosamente'
+            );
+        } catch (\Exception $e) {
+            \Log::error('❌ Error en RoleController@index', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'params' => $request->all()
+            ]);
+
+            return $this->handleException($e, 'Error al obtener roles');
         }
-
-        // Filter by status
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
-        }
-
-        $roles = $query->paginate($request->get('per_page', 15));
-
-        return response()->json($roles);
     }
 
     /**
@@ -41,24 +76,35 @@ class RoleController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255|unique:roles',
-            'display_name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'is_active' => 'boolean',
-        ]);
+        try {
+            $request->validate([
+                'name' => 'required|string|max:255|unique:roles',
+                'slug' => 'required|string|max:255|unique:roles',
+                'description' => 'nullable|string',
+                'is_active' => 'boolean',
+            ]);
 
-        $role = Role::create([
-            'name' => $request->name,
-            'display_name' => $request->display_name,
-            'description' => $request->description,
-            'is_active' => $request->get('is_active', true),
-        ]);
+            $role = Role::create([
+                'name' => $request->name,
+                'slug' => $request->slug,
+                'description' => $request->description,
+                'is_active' => $request->get('is_active', true),
+            ]);
 
-        return response()->json([
-            'message' => 'Rol creado exitosamente',
-            'role' => $role,
-        ], Response::HTTP_CREATED);
+            \Log::info('RoleController: Role created successfully', [
+                'role_id' => $role->id,
+                'name' => $role->name,
+                'slug' => $role->slug,
+                'user_id' => auth()->id(),
+            ]);
+
+            return $this->createdResponse(
+                $role->load('users'),
+                'Rol creado exitosamente'
+            );
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al crear rol');
+        }
     }
 
     /**
@@ -66,9 +112,16 @@ class RoleController extends Controller
      */
     public function show(Role $role)
     {
-        return response()->json([
-            'role' => $role->load('users'),
-        ]);
+        try {
+            $roleData = $role->load('users');
+            $roleData->users_count = $roleData->users->count();
+
+            return $this->successResponse([
+                'role' => $roleData,
+            ], 'Rol obtenido exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al obtener rol');
+        }
     }
 
     /**
@@ -76,21 +129,32 @@ class RoleController extends Controller
      */
     public function update(Request $request, Role $role)
     {
-        $request->validate([
-            'name' => 'string|max:255|unique:roles,name,' . $role->id,
-            'display_name' => 'string|max:255',
-            'description' => 'nullable|string',
-            'is_active' => 'boolean',
-        ]);
+        try {
+            $request->validate([
+                'name' => 'string|max:255|unique:roles,name,' . $role->id,
+                'slug' => 'string|max:255|unique:roles,slug,' . $role->id,
+                'description' => 'nullable|string',
+                'is_active' => 'boolean',
+            ]);
 
-        $role->update($request->only([
-            'name', 'display_name', 'description', 'is_active'
-        ]));
+            $role->update($request->only([
+                'name', 'slug', 'description', 'is_active'
+            ]));
 
-        return response()->json([
-            'message' => 'Rol actualizado exitosamente',
-            'role' => $role,
-        ]);
+            \Log::info('RoleController: Role updated successfully', [
+                'role_id' => $role->id,
+                'name' => $role->name,
+                'slug' => $role->slug,
+                'user_id' => auth()->id(),
+            ]);
+
+            return $this->updatedResponse(
+                $role->load('users'),
+                'Rol actualizado exitosamente'
+            );
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al actualizar rol');
+        }
     }
 
     /**
@@ -98,18 +162,39 @@ class RoleController extends Controller
      */
     public function destroy(Role $role)
     {
-        // Verificar si el rol tiene usuarios asignados
-        if ($role->users()->count() > 0) {
-            return response()->json([
-                'message' => 'No se puede eliminar el rol porque tiene usuarios asignados',
-            ], Response::HTTP_BAD_REQUEST);
+        try {
+            // Verificar si el rol tiene usuarios asignados
+            $usersCount = $role->users()->count();
+            if ($usersCount > 0) {
+                return $this->errorResponse(
+                    "No se puede eliminar el rol porque tiene {$usersCount} usuario(s) asignado(s)",
+                    [],
+                    400
+                );
+            }
+
+            // Verificar si es un rol del sistema
+            if ($role->is_system_role) {
+                return $this->errorResponse(
+                    'No se puede eliminar un rol del sistema',
+                    [],
+                    400
+                );
+            }
+
+            $role->delete();
+
+            \Log::info('RoleController: Role deleted successfully', [
+                'role_id' => $role->id,
+                'name' => $role->name,
+                'slug' => $role->slug,
+                'user_id' => auth()->id(),
+            ]);
+
+            return $this->deletedResponse('Rol eliminado exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al eliminar rol');
         }
-
-        $role->delete();
-
-        return response()->json([
-            'message' => 'Rol eliminado exitosamente',
-        ]);
     }
 
     /**
@@ -117,11 +202,44 @@ class RoleController extends Controller
      */
     public function getActiveRoles()
     {
-        $roles = Role::where('is_active', true)
-                    ->select('id', 'name', 'display_name')
-                    ->get();
+        try {
+            $roles = Role::where('is_active', true)
+                        ->select('id', 'name', 'slug')
+                        ->orderBy('name')
+                        ->get();
 
-        return response()->json($roles);
+            return $this->successResponse([
+                'roles' => $roles,
+            ], 'Roles activos obtenidos exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al obtener roles activos');
+        }
+    }
+
+    /**
+     * Toggle role status (active/inactive).
+     */
+    public function toggleStatus(Role $role)
+    {
+        try {
+            $newStatus = !$role->is_active;
+            $role->update(['is_active' => $newStatus]);
+
+            \Log::info('RoleController: Role status toggled', [
+                'role_id' => $role->id,
+                'name' => $role->name,
+                'old_status' => !$newStatus,
+                'new_status' => $newStatus,
+                'user_id' => auth()->id(),
+            ]);
+
+            return $this->updatedResponse([
+                'role' => $role->load('users'),
+                'status' => $newStatus ? 'activado' : 'desactivado',
+            ], 'Estado del rol actualizado exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al actualizar el estado del rol');
+        }
     }
 
     /**
@@ -129,17 +247,39 @@ class RoleController extends Controller
      */
     public function statistics()
     {
-        $stats = [
-            'total_roles' => Role::count(),
-            'active_roles' => Role::where('is_active', true)->count(),
-            'roles_with_users' => Role::whereHas('users')->count(),
-            'roles_by_name' => [
-                'administrador' => Role::where('name', 'administrador')->withCount('users')->first(),
-                'comercial' => Role::where('name', 'comercial')->withCount('users')->first(),
-                'tecnico' => Role::where('name', 'tecnico')->withCount('users')->first(),
-            ]
-        ];
+        try {
+            $stats = [
+                'total' => Role::count(),
+                'active' => Role::where('is_active', true)->count(),
+                'inactive' => Role::where('is_active', false)->count(),
+                'system_roles' => Role::where('is_system_role', true)->count(),
+                'custom_roles' => Role::where('is_system_role', false)->count(),
+                'with_users' => Role::has('users')->count(),
+                'without_users' => Role::doesntHave('users')->count(),
+            ];
 
-        return response()->json($stats);
+            return $this->successResponse([
+                'statistics' => $stats,
+            ], 'Estadísticas de roles obtenidas exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al obtener estadísticas de roles');
+        }
+    }
+
+    /**
+     * Get available permissions (returns empty since system uses roles only).
+     */
+    public function getPermissions()
+    {
+        try {
+            // Sistema basado en roles, no permisos específicos
+            return $this->successResponse([
+                'permissions' => [],
+                'modules' => [],
+                'flat_permissions' => []
+            ], 'Permisos obtenidos exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al obtener permisos');
+        }
     }
 }

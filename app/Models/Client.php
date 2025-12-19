@@ -6,61 +6,87 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Client extends Model
 {
-    use HasFactory;
-
-    protected $primaryKey = 'client_id';
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'nic',
-        'client_type',
         'name',
-        'department',
-        'city',
+        'client_type_id',
+        'document_type',
+        'document_number',
+        'nic',
+        'email',
+        'phone',
+        'mobile',
         'address',
+        'department_id',
+        'city_id',
         'monthly_consumption_kwh',
-        'energy_rate',
-        'network_type',
-        'user_id',
-        'is_active'
+        'tariff_cop_kwh',
+        'responsible_user_id',
+        'notes',
+        'is_active',
     ];
 
     protected $casts = [
-        'monthly_consumption_kwh' => 'float',
-        'energy_rate' => 'float',
+        'monthly_consumption_kwh' => 'decimal:2',
+        'tariff_cop_kwh' => 'decimal:2',
         'is_active' => 'boolean',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime'
     ];
 
     /**
-     * Relación con el usuario
+     * Get the client type that owns the client.
      */
-    public function user(): BelongsTo
+    public function clientType(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(ClientType::class, 'client_type_id');
     }
 
     /**
-     * Relación con las cotizaciones
+     * Get the department that owns the client.
      */
-    public function quotations(): HasMany
+    public function department(): BelongsTo
     {
-        return $this->hasMany(Quotation::class, 'client_id', 'client_id');
+        return $this->belongsTo(Department::class);
     }
 
     /**
-     * Relación con los proyectos
+     * Get the city that owns the client.
      */
-    public function projects(): HasMany
+    public function city(): BelongsTo
     {
-        return $this->hasMany(Project::class, 'client_id', 'client_id');
+        return $this->belongsTo(City::class);
     }
 
     /**
-     * Scope para clientes activos
+     * Get the responsible user for the client.
+     */
+    public function responsibleUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsible_user_id');
+    }
+
+    /**
+     * Get the contact persons for the client.
+     */
+    public function contactPersons(): HasMany
+    {
+        return $this->hasMany(ClientContactPerson::class);
+    }
+
+    /**
+     * Get the primary contact person.
+     */
+    public function primaryContact()
+    {
+        return $this->contactPersons()->where('is_primary', true)->first();
+    }
+
+    /**
+     * Scope to get only active clients.
      */
     public function scopeActive($query)
     {
@@ -68,42 +94,76 @@ class Client extends Model
     }
 
     /**
-     * Scope para filtrar por tipo de cliente
+     * Scope to filter by client type.
      */
-    public function scopeByType($query, $type)
+    public function scopeOfType($query, $typeSlug)
     {
-        return $query->where('client_type', $type);
+        return $query->whereHas('clientType', function ($q) use ($typeSlug) {
+            $q->where('slug', $typeSlug);
+        });
     }
 
     /**
-     * Scope para filtrar por departamento
+     * Scope to filter by client type ID.
      */
-    public function scopeByDepartment($query, $department)
+    public function scopeByType($query, $typeId)
     {
-        return $query->where('department', $department);
+        return $query->where('client_type_id', $typeId);
     }
 
     /**
-     * Scope para filtrar por ciudad
+     * Scope to filter by department.
      */
-    public function scopeByCity($query, $city)
+    public function scopeByDepartment($query, $departmentId)
     {
-        return $query->where('city', $city);
+        return $query->where('department_id', $departmentId);
     }
 
     /**
-     * Calcular consumo mensual estimado
+     * Scope to filter by city.
      */
-    public function getMonthlyEstimatedCostAttribute()
+    public function scopeByCity($query, $cityId)
     {
-        return $this->monthly_consumption_kwh * $this->energy_rate;
+        return $query->where('city_id', $cityId);
     }
 
     /**
-     * Obtener el nombre completo con NIC
+     * Scope to filter by responsible user.
      */
-    public function getFullIdentificationAttribute()
+    public function scopeByResponsibleUser($query, $userId)
     {
-        return $this->name . ' (' . $this->nic . ')';
+        return $query->where('responsible_user_id', $userId);
     }
+
+    /**
+     * Scope to filter by consumption range.
+     */
+    public function scopeConsumptionRange($query, $min, $max = null)
+    {
+        $query->where('monthly_consumption_kwh', '>=', $min);
+
+        if ($max !== null) {
+            $query->where('monthly_consumption_kwh', '<=', $max);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Scope to search by multiple fields.
+     */
+    public function scopeSearch($query, $searchTerm)
+    {
+        return $query->where(function ($q) use ($searchTerm) {
+            $q->where('name', 'like', "%{$searchTerm}%")
+              ->orWhere('nic', 'like', "%{$searchTerm}%")
+              ->orWhere('email', 'like', "%{$searchTerm}%")
+              ->orWhere('phone', 'like', "%{$searchTerm}%")
+              ->orWhere('mobile', 'like', "%{$searchTerm}%")
+              ->orWhere('address', 'like', "%{$searchTerm}%")
+              ->orWhere('document_number', 'like', "%{$searchTerm}%");
+        });
+    }
+
+
 }

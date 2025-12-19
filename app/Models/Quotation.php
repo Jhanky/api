@@ -6,18 +6,21 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Quotation extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
-    protected $primaryKey = 'quotation_id';
-    
     protected $fillable = [
+        'code',
         'client_id',
         'user_id',
+        'status_id',
         'project_name',
-        'system_type',
+        'system_type_id',  // FK a tabla system_types
+        'grid_type_id',    // FK a tabla grid_types
         'power_kwp',
         'panel_count',
         'requires_financing',
@@ -37,11 +40,17 @@ class Quotation extends Model
         'total_value',
         'subtotal2',
         'subtotal3',
-        'status_id'
+        'issue_date',
+        'expiration_date',
+        'approved_at',
+        'notes',
+        'terms_conditions',
+        'is_active',
     ];
 
     protected $casts = [
         'power_kwp' => 'decimal:2',
+        'panel_count' => 'integer',
         'requires_financing' => 'boolean',
         'profit_percentage' => 'decimal:3',
         'iva_profit_percentage' => 'decimal:3',
@@ -49,22 +58,26 @@ class Quotation extends Model
         'administration_percentage' => 'decimal:3',
         'contingency_percentage' => 'decimal:3',
         'withholding_percentage' => 'decimal:3',
-        'subtotal' => 'float',
-        'profit' => 'float',
-        'profit_iva' => 'float',
-        'commercial_management' => 'float',
-        'administration' => 'float',
-        'contingency' => 'float',
-        'withholdings' => 'float',
-        'total_value' => 'float',
-        'subtotal2' => 'float',
-        'subtotal3' => 'float',
+        'subtotal' => 'decimal:2',
+        'profit' => 'decimal:2',
+        'profit_iva' => 'decimal:2',
+        'commercial_management' => 'decimal:2',
+        'administration' => 'decimal:2',
+        'contingency' => 'decimal:2',
+        'withholdings' => 'decimal:2',
+        'total_value' => 'decimal:2',
+        'subtotal2' => 'decimal:2',
+        'subtotal3' => 'decimal:2',
+        'issue_date' => 'date',
+        'expiration_date' => 'date',
+        'approved_at' => 'date',
+        'is_active' => 'boolean',
     ];
 
-    // Relaciones
+    // Relationships
     public function client(): BelongsTo
     {
-        return $this->belongsTo(Client::class, 'client_id', 'client_id');
+        return $this->belongsTo(Client::class);
     }
 
     public function user(): BelongsTo
@@ -74,60 +87,104 @@ class Quotation extends Model
 
     public function status(): BelongsTo
     {
-        return $this->belongsTo(QuotationStatus::class, 'status_id', 'status_id');
+        return $this->belongsTo(QuotationStatus::class, 'status_id');
     }
 
+    public function systemType(): BelongsTo
+    {
+        return $this->belongsTo(SystemType::class, 'system_type_id');
+    }
+
+    public function gridType(): BelongsTo
+    {
+        return $this->belongsTo(GridType::class, 'grid_type_id');
+    }
+
+    public function quotationItems(): HasMany
+    {
+        return $this->hasMany(QuotationItem::class);
+    }
+
+    public function quotationProducts(): HasMany
+    {
+        return $this->hasMany(QuotationProduct::class);
+    }
+
+    public function quotationFollowUps(): HasMany
+    {
+        return $this->hasMany(QuotationFollowUp::class);
+    }
+
+    public function project(): HasOne
+    {
+        return $this->hasOne(Project::class);
+    }
+
+    // Alias para compatibilidad con el controlador
     public function usedProducts(): HasMany
     {
-        return $this->hasMany(UsedProduct::class, 'quotation_id', 'quotation_id');
+        return $this->quotationProducts();
     }
 
     public function items(): HasMany
     {
-        return $this->hasMany(ItemCotizacion::class, 'quotation_id', 'quotation_id');
+        return $this->quotationItems();
     }
 
-    public function project(): HasMany
+    // Scopes
+    public function scopeActive($query)
     {
-        return $this->hasMany(Project::class, 'quotation_id', 'quotation_id');
+        return $query->where('is_active', true);
     }
 
-    // Métodos
-    public function calculateTotals()
+    public function scopeByStatus($query, $statusId)
     {
-        $subtotalProducts = $this->usedProducts()->sum('total_value');
-        $subtotalItems = $this->items()->sum('total_value');
-        
-        $subtotal = $subtotalProducts + $subtotalItems;
-        $commercialManagement = $subtotal * $this->commercial_management_percentage;
-        $subtotal2 = $subtotal + $commercialManagement;
-        
-        $administrative = $subtotal2 * $this->administration_percentage;
-        $contingency = $subtotal2 * $this->contingency_percentage;
-        $profit = $subtotal2 * $this->profit_percentage;
-        $ivaProfit = $profit * $this->iva_profit_percentage;
-        
-        $subtotal3 = $subtotal2 + $administrative + $contingency + $profit + $ivaProfit;
-        $withholdings = $subtotal3 * $this->withholding_percentage;
-        $totalValue = $subtotal3 + $withholdings;
-        
-        $this->update([
-            'subtotal' => $subtotal,
-            'subtotal2' => $subtotal2,
-            'subtotal3' => $subtotal3,
-            'profit' => $profit,
-            'profit_iva' => $ivaProfit,
-            'commercial_management' => $commercialManagement,
-            'administration' => $administrative,
-            'contingency' => $contingency,
-            'withholdings' => $withholdings,
-            'total_value' => $totalValue
-        ]);
+        return $query->where('status_id', $statusId);
     }
 
-    // Accessor para número de cotización
-    public function getQuotationNumberAttribute()
+    public function scopeExpired($query)
     {
-        return 'COT-' . str_pad($this->quotation_id, 6, '0', STR_PAD_LEFT);
+        return $query->where('expiration_date', '<', now());
+    }
+
+    public function scopeApproved($query)
+    {
+        return $query->whereNotNull('approved_at');
+    }
+
+    // Helper methods
+    public function isExpired(): bool
+    {
+        return $this->expiration_date < now();
+    }
+
+    public function isApproved(): bool
+    {
+        return !is_null($this->approved_at);
+    }
+
+    public function requiresFinancing(): bool
+    {
+        return $this->requires_financing;
+    }
+
+    public function getTotalValue(): float
+    {
+        // Calculate total from items and products
+        $itemsTotal = $this->quotationItems->sum(function ($item) {
+            return $item->quantity * $item->unit_price_cop;
+        });
+
+        $productsTotal = $this->quotationProducts->sum(function ($product) {
+            return $product->quantity * $product->unit_price_cop;
+        });
+
+        return $itemsTotal + $productsTotal;
+    }
+
+    public function getTotalWithProfit(): float
+    {
+        $total = $this->getTotalValue();
+        return $total * (1 + ($this->profit_percentage / 100));
     }
 }

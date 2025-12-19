@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Panel;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +13,7 @@ use Illuminate\Support\Str;
 
 class PanelController extends Controller
 {
+    use ApiResponseTrait;
     /**
      * Listar todos los paneles con filtros opcionales
      */
@@ -47,7 +49,7 @@ class PanelController extends Controller
             }
 
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'panel_id');
+            $sortBy = $request->get('sort_by', 'id');
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
@@ -57,16 +59,23 @@ class PanelController extends Controller
 
             return response()->json([
                 'success' => true,
+                'data' => $panels->items(),
+                'pagination' => [
+                    'current_page' => $panels->currentPage(),
+                    'per_page' => $panels->perPage(),
+                    'total' => $panels->total(),
+                    'last_page' => $panels->lastPage(),
+                    'from' => $panels->firstItem(),
+                    'to' => $panels->lastItem(),
+                    'has_more_pages' => $panels->hasMorePages(),
+                ],
                 'message' => 'Paneles obtenidos exitosamente',
-                'data' => $panels
+                'timestamp' => now()->toISOString(),
+                'request_id' => Str::uuid()->toString()
             ]);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al obtener los paneles',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al obtener los paneles');
         }
     }
 
@@ -93,7 +102,13 @@ class PanelController extends Controller
                 ], 422);
             }
 
-            $panelData = $request->only(['brand', 'model', 'power', 'type', 'price']);
+            $panelData = [
+                'brand' => $request->get('brand'),
+                'model' => $request->get('model'),
+                'power' => $request->get('power'),
+                'type' => $request->get('type'),
+                'price' => $request->get('price'),
+            ];
 
             // Manejar la subida del archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -168,7 +183,13 @@ class PanelController extends Controller
                 ], 422);
             }
 
-            $panelData = $request->only(['brand', 'model', 'power', 'type', 'price']);
+            $panelData = [
+                'brand' => $request->get('brand'),
+                'model' => $request->get('model'),
+                'power' => $request->get('power'),
+                'type' => $request->get('type'),
+                'price' => $request->get('price'),
+            ];
 
             // Manejar la actualización del archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -259,44 +280,5 @@ class PanelController extends Controller
         }
     }
 
-    /**
-     * Obtener estadísticas de paneles
-     */
-    public function statistics(): JsonResponse
-    {
-        try {
-            $stats = [
-                'total_panels' => Panel::count(),
-                'brands_count' => Panel::distinct('brand')->count(),
-                'types_count' => Panel::distinct('type')->count(),
-                'average_power' => Panel::avg('power'),
-                'average_price' => Panel::avg('price'),
-                'max_power' => Panel::max('power'),
-                'min_power' => Panel::min('power'),
-                'max_price' => Panel::max('price'),
-                'min_price' => Panel::min('price'),
-                'panels_by_type' => Panel::selectRaw('type, COUNT(*) as count')
-                    ->groupBy('type')
-                    ->get(),
-                'panels_by_brand' => Panel::selectRaw('brand, COUNT(*) as count')
-                    ->groupBy('brand')
-                    ->orderBy('count', 'desc')
-                    ->limit(10)
-                    ->get()
-            ];
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Estadísticas obtenidas exitosamente',
-                'data' => $stats
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al obtener las estadísticas',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 }

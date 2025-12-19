@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inverter;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +13,7 @@ use Illuminate\Support\Str;
 
 class InverterController extends Controller
 {
+    use ApiResponseTrait;
     /**
      * Listar todos los inversores con filtros opcionales
      */
@@ -52,7 +54,7 @@ class InverterController extends Controller
             }
 
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'inverter_id');
+            $sortBy = $request->get('sort_by', 'id');
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
@@ -62,16 +64,23 @@ class InverterController extends Controller
 
             return response()->json([
                 'success' => true,
+                'data' => $inverters->items(),
+                'pagination' => [
+                    'current_page' => $inverters->currentPage(),
+                    'per_page' => $inverters->perPage(),
+                    'total' => $inverters->total(),
+                    'last_page' => $inverters->lastPage(),
+                    'from' => $inverters->firstItem(),
+                    'to' => $inverters->lastItem(),
+                    'has_more_pages' => $inverters->hasMorePages(),
+                ],
                 'message' => 'Inversores obtenidos exitosamente',
-                'data' => $inverters
+                'timestamp' => now()->toISOString(),
+                'request_id' => Str::uuid()->toString()
             ]);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al obtener los inversores',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al obtener los inversores');
         }
     }
 
@@ -99,7 +108,14 @@ class InverterController extends Controller
                 ], 422);
             }
 
-            $inverterData = $request->only(['brand', 'model', 'power', 'system_type', 'grid_type', 'price']);
+            $inverterData = [
+                'brand' => $request->get('brand'),
+                'model' => $request->get('model'),
+                'power' => $request->get('power'),
+                'system_type' => $request->get('system_type'),
+                'grid_type' => $request->get('grid_type'),
+                'price' => $request->get('price'),
+            ];
 
             // Manejar la subida del archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -157,7 +173,32 @@ class InverterController extends Controller
         try {
             $inverter = Inverter::findOrFail($id);
 
-            $validator = Validator::make($request->all(), [
+            // Debug logging for FormData
+            $allData = $request->all();
+            \Log::info('Inverter update request data:', [
+                'request_method' => $request->method(),
+                'content_type' => $request->header('Content-Type'),
+                'all_data' => $allData,
+                'all_data_keys' => array_keys($allData),
+                'brand_from_all' => $allData['brand'] ?? 'NOT_FOUND',
+                'model_from_all' => $allData['model'] ?? 'NOT_FOUND',
+                'power_from_all' => $allData['power'] ?? 'NOT_FOUND',
+                'system_type_from_all' => $allData['system_type'] ?? 'NOT_FOUND',
+                'grid_type_from_all' => $allData['grid_type'] ?? 'NOT_FOUND',
+                'price_from_all' => $allData['price'] ?? 'NOT_FOUND',
+                'has_file' => $request->hasFile('technical_sheet'),
+                'file_info' => $request->file('technical_sheet') ? 'File present' : 'No file'
+            ]);
+
+            $validator = Validator::make([
+                'brand' => $allData['brand'] ?? null,
+                'model' => $allData['model'] ?? null,
+                'power' => $allData['power'] ?? null,
+                'system_type' => $allData['system_type'] ?? null,
+                'grid_type' => $allData['grid_type'] ?? null,
+                'price' => $allData['price'] ?? null,
+                'technical_sheet' => $request->file('technical_sheet')
+            ], [
                 'brand' => 'sometimes|string|max:100',
                 'model' => 'sometimes|string|max:100',
                 'power' => 'sometimes|numeric|min:0',
@@ -175,7 +216,14 @@ class InverterController extends Controller
                 ], 422);
             }
 
-            $inverterData = $request->only(['brand', 'model', 'power', 'system_type', 'grid_type', 'price']);
+            $inverterData = [
+                'brand' => $allData['brand'] ?? null,
+                'model' => $allData['model'] ?? null,
+                'power' => $allData['power'] ?? null,
+                'system_type' => $allData['system_type'] ?? null,
+                'grid_type' => $allData['grid_type'] ?? null,
+                'price' => $allData['price'] ?? null,
+            ];
 
             // Manejar la actualización del archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -266,48 +314,5 @@ class InverterController extends Controller
         }
     }
 
-    /**
-     * Obtener estadísticas de inversores
-     */
-    public function statistics(): JsonResponse
-    {
-        try {
-            $stats = [
-                'total_inverters' => Inverter::count(),
-                'brands_count' => Inverter::distinct('brand')->count(),
-                'system_types_count' => Inverter::distinct('system_type')->count(),
-                'grid_types_count' => Inverter::distinct('grid_type')->count(),
-                'average_power' => Inverter::avg('power'),
-                'average_price' => Inverter::avg('price'),
-                'max_power' => Inverter::max('power'),
-                'min_power' => Inverter::min('power'),
-                'max_price' => Inverter::max('price'),
-                'min_price' => Inverter::min('price'),
-                'inverters_by_system_type' => Inverter::selectRaw('system_type, COUNT(*) as count')
-                    ->groupBy('system_type')
-                    ->get(),
-                'inverters_by_grid_type' => Inverter::selectRaw('grid_type, COUNT(*) as count')
-                    ->groupBy('grid_type')
-                    ->get(),
-                'inverters_by_brand' => Inverter::selectRaw('brand, COUNT(*) as count')
-                    ->groupBy('brand')
-                    ->orderBy('count', 'desc')
-                    ->limit(10)
-                    ->get()
-            ];
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Estadísticas obtenidas exitosamente',
-                'data' => $stats
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al obtener las estadísticas',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 }
