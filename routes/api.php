@@ -120,6 +120,8 @@ Route::middleware(['auth:sanctum', 'api'])->group(function () {
     Route::prefix('users')->group(function () {
         // Ruta para obtener el ID del usuario autenticado
         Route::get('me/id', [UserController::class, 'getUserId']); // Obtener ID del usuario autenticado
+        // Ruta para actualizar el tema del usuario autenticado
+        Route::patch('theme', [UserController::class, 'updateTheme']); // Actualizar tema del usuario
     });
 
     // Rutas de roles disponibles para usuarios autenticados

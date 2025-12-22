@@ -57,22 +57,7 @@ class PanelController extends Controller
             $perPage = $request->get('per_page', 15);
             $panels = $query->paginate($perPage);
 
-            return response()->json([
-                'success' => true,
-                'data' => $panels->items(),
-                'pagination' => [
-                    'current_page' => $panels->currentPage(),
-                    'per_page' => $panels->perPage(),
-                    'total' => $panels->total(),
-                    'last_page' => $panels->lastPage(),
-                    'from' => $panels->firstItem(),
-                    'to' => $panels->lastItem(),
-                    'has_more_pages' => $panels->hasMorePages(),
-                ],
-                'message' => 'Paneles obtenidos exitosamente',
-                'timestamp' => now()->toISOString(),
-                'request_id' => Str::uuid()->toString()
-            ]);
+            return $this->paginationResponse($panels, 'Paneles obtenidos exitosamente');
 
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al obtener los paneles');
@@ -95,11 +80,7 @@ class PanelController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Errores de validación',
-                    'errors' => $validator->errors()
-                ], 422);
+                return $this->validationErrorResponse($validator->errors()->toArray());
             }
 
             $panelData = [
@@ -120,18 +101,10 @@ class PanelController extends Controller
 
             $panel = Panel::create($panelData);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Panel creado exitosamente',
-                'data' => $panel
-            ], 201);
+            return $this->createdResponse($panel, 'Panel creado exitosamente');
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al crear el panel',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al crear el panel');
         }
     }
 
@@ -143,18 +116,12 @@ class PanelController extends Controller
         try {
             $panel = Panel::findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Panel obtenido exitosamente',
-                'data' => $panel
-            ]);
+            return $this->successResponse($panel, 'Panel obtenido exitosamente');
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Panel');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Panel no encontrado',
-                'error' => $e->getMessage()
-            ], 404);
+            return $this->handleException($e, 'Error al obtener el panel');
         }
     }
 
@@ -164,6 +131,23 @@ class PanelController extends Controller
     public function update(Request $request, $id): JsonResponse
     {
         try {
+            // ========== DEBUG: VER QUÉ DATOS LLEGAN ==========
+            \Log::info('🔧 PanelController::update - Datos recibidos:', [
+                'id' => $id,
+                'method' => $request->method(),
+                'content_type' => $request->header('Content-Type'),
+                'all_data' => $request->all(),
+                'all_keys' => array_keys($request->all()),
+                'brand' => $request->get('brand'),
+                'model' => $request->get('model'),
+                'power' => $request->get('power'),
+                'type' => $request->get('type'),
+                'price' => $request->get('price'),
+                'has_file' => $request->hasFile('technical_sheet'),
+                '_method' => $request->get('_method'),
+            ]);
+            // ==================================================
+
             $panel = Panel::findOrFail($id);
 
             $validator = Validator::make($request->all(), [
@@ -176,11 +160,7 @@ class PanelController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Errores de validación',
-                    'errors' => $validator->errors()
-                ], 422);
+                return $this->validationErrorResponse($validator->errors()->toArray());
             }
 
             $panelData = [
@@ -190,6 +170,10 @@ class PanelController extends Controller
                 'type' => $request->get('type'),
                 'price' => $request->get('price'),
             ];
+
+            \Log::info('🔧 PanelController::update - Datos a actualizar:', [
+                'panelData' => $panelData
+            ]);
 
             // Manejar la actualización del archivo PDF
             if ($request->hasFile('technical_sheet')) {
@@ -207,18 +191,12 @@ class PanelController extends Controller
 
             $panel->update($panelData);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Panel actualizado exitosamente',
-                'data' => $panel->fresh()
-            ]);
+            return $this->updatedResponse($panel->fresh(), 'Panel actualizado exitosamente');
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Panel');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al actualizar el panel',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al actualizar el panel');
         }
     }
 
@@ -237,17 +215,12 @@ class PanelController extends Controller
 
             $panel->delete();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Panel eliminado exitosamente'
-            ]);
+            return $this->deletedResponse('Panel eliminado exitosamente');
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Panel');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al eliminar el panel',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al eliminar el panel');
         }
     }
 

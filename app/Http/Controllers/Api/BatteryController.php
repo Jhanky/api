@@ -13,7 +13,6 @@ use Illuminate\Support\Str;
 
 class BatteryController extends Controller
 {
-    use ApiResponseTrait;
     /**
      * Listar todas las baterías con filtros opcionales
      */
@@ -61,22 +60,7 @@ class BatteryController extends Controller
             $perPage = $request->get('per_page', 15);
             $batteries = $query->paginate($perPage);
 
-            return response()->json([
-                'success' => true,
-                'data' => $batteries->items(),
-                'pagination' => [
-                    'current_page' => $batteries->currentPage(),
-                    'per_page' => $batteries->perPage(),
-                    'total' => $batteries->total(),
-                    'last_page' => $batteries->lastPage(),
-                    'from' => $batteries->firstItem(),
-                    'to' => $batteries->lastItem(),
-                    'has_more_pages' => $batteries->hasMorePages(),
-                ],
-                'message' => 'Baterías obtenidas exitosamente',
-                'timestamp' => now()->toISOString(),
-                'request_id' => Str::uuid()->toString()
-            ]);
+            return $this->paginationResponse($batteries, 'Baterías obtenidas exitosamente');
 
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al obtener las baterías');
@@ -99,10 +83,7 @@ class BatteryController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Datos de validación incorrectos',
-                'errors' => $validator->errors()
-            ], 422);
+            return $this->validationErrorResponse($validator->errors()->toArray());
         }
 
         try {
@@ -125,15 +106,10 @@ class BatteryController extends Controller
 
             $battery = Battery::create($batteryData);
 
-            return response()->json([
-                'message' => 'Batería creada exitosamente',
-                'battery' => $battery
-            ], 201);
+            return $this->createdResponse($battery, 'Batería creada exitosamente');
+
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al crear la batería',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al crear la batería');
         }
     }
 
@@ -144,12 +120,11 @@ class BatteryController extends Controller
     {
         try {
             $battery = Battery::findOrFail($id);
-            return response()->json($battery);
+            return $this->successResponse($battery, 'Batería obtenida exitosamente');
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Batería');
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Batería no encontrada',
-                'error' => $e->getMessage()
-            ], 404);
+            return $this->handleException($e, 'Error al obtener la batería');
         }
     }
 
@@ -169,10 +144,7 @@ class BatteryController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Datos de validación incorrectos',
-                'errors' => $validator->errors()
-            ], 422);
+            return $this->validationErrorResponse($validator->errors()->toArray());
         }
 
         try {
@@ -202,15 +174,12 @@ class BatteryController extends Controller
 
             $battery->update($batteryData);
 
-            return response()->json([
-                'message' => 'Batería actualizada exitosamente',
-                'battery' => $battery->fresh()
-            ]);
+            return $this->updatedResponse($battery->fresh(), 'Batería actualizada exitosamente');
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Batería');
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al actualizar la batería',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al actualizar la batería');
         }
     }
 
@@ -229,14 +198,12 @@ class BatteryController extends Controller
 
             $battery->delete();
 
-            return response()->json([
-                'message' => 'Batería eliminada exitosamente'
-            ]);
+            return $this->deletedResponse('Batería eliminada exitosamente');
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Batería');
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al eliminar la batería',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al eliminar la batería');
         }
     }
 

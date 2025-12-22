@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class ClientService
 {
@@ -18,7 +19,7 @@ class ClientService
      * @param int $perPage
      * @return LengthAwarePaginator
      */
-    public function getClients(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    public function getClients(array $filters = [], int $perPage = 25): LengthAwarePaginator
     {
         $query = Client::with([
             'clientType',
@@ -76,6 +77,10 @@ class ClientService
             }
 
             DB::commit();
+
+            // Invalidate cache
+            Cache::forget('client_statistics');
+
             return $client->load(['clientType', 'department', 'city', 'responsibleUser', 'contactPersons']);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -106,6 +111,10 @@ class ClientService
             }
 
             DB::commit();
+
+            // Invalidate cache
+            Cache::forget('client_statistics');
+
             return $client->fresh(['clientType', 'department', 'city', 'responsibleUser', 'contactPersons']);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -134,6 +143,10 @@ class ClientService
             $client->delete();
 
             DB::commit();
+
+            // Invalidate cache
+            Cache::forget('client_statistics');
+
             return true;
         } catch (\Exception $e) {
             DB::rollBack();
@@ -165,30 +178,32 @@ class ClientService
     }
 
     /**
-     * Get client statistics
+     * Get client statistics with caching
      *
      * @return array
      */
     public function getClientStatistics(): array
     {
-        return [
-            'total_clients' => Client::count(),
-            'active_clients' => Client::active()->count(),
-            'inactive_clients' => Client::where('is_active', false)->count(),
-            'clients_by_type' => Client::selectRaw('client_type_id, COUNT(*) as count')
-                                      ->with('clientType:id,name')
-                                      ->groupBy('client_type_id')
-                                      ->get(),
-            'clients_by_department' => Client::selectRaw('department_id, COUNT(*) as count')
-                                            ->with('department:id,name')
-                                            ->groupBy('department_id')
-                                            ->orderBy('count', 'desc')
-                                            ->limit(10)
-                                            ->get(),
-            'total_consumption' => Client::sum('monthly_consumption_kwh'),
-            'average_consumption' => Client::avg('monthly_consumption_kwh'),
-            'average_energy_rate' => Client::avg('tariff_cop_kwh')
-        ];
+        return Cache::remember('client_statistics', 300, function () { // Cache por 5 minutos
+            return [
+                'total_clients' => Client::count(),
+                'active_clients' => Client::active()->count(),
+                'inactive_clients' => Client::where('is_active', false)->count(),
+                'clients_by_type' => Client::selectRaw('client_type_id, COUNT(*) as count')
+                                          ->with('clientType:id,name')
+                                          ->groupBy('client_type_id')
+                                          ->get(),
+                'clients_by_department' => Client::selectRaw('department_id, COUNT(*) as count')
+                                                ->with('department:id,name')
+                                                ->groupBy('department_id')
+                                                ->orderBy('count', 'desc')
+                                                ->limit(10)
+                                                ->get(),
+                'total_consumption' => Client::sum('monthly_consumption_kwh'),
+                'average_consumption' => Client::avg('monthly_consumption_kwh'),
+                'average_energy_rate' => Client::avg('tariff_cop_kwh')
+            ];
+        });
     }
 
     /**
@@ -212,7 +227,15 @@ class ClientService
         }
 
         if (!empty($filters['client_type_id'])) {
-            $query->where('client_type_id', $filters['client_type_id']);
+            // Si es un número, buscar por ID
+            if (is_numeric($filters['client_type_id'])) {
+                $query->where('client_type_id', $filters['client_type_id']);
+            } else {
+                // Si es un string (slug), buscar por la relación
+                $query->whereHas('clientType', function ($q) use ($filters) {
+                    $q->where('slug', $filters['client_type_id']);
+                });
+            }
         }
 
         if (!empty($filters['department_id'])) {
@@ -223,8 +246,9 @@ class ClientService
             $query->where('city_id', $filters['city_id']);
         }
 
-        if (isset($filters['is_active'])) {
-            $query->where('is_active', (bool) $filters['is_active']);
+        if (isset($filters['is_active']) && $filters['is_active'] !== '') {
+            $isActive = filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN);
+            $query->where('is_active', $isActive);
         }
 
         if (!empty($filters['responsible_user_id'])) {
@@ -294,6 +318,9 @@ class ClientService
             $deletedCount = Client::whereIn('id', $clientIds)->delete();
 
             DB::commit();
+
+            // Invalidate cache
+            Cache::forget('client_statistics');
 
             // Log the bulk deletion
             Log::info('Bulk client deletion completed', [

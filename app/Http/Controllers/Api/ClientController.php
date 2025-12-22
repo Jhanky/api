@@ -34,7 +34,7 @@ class ClientController extends Controller
                 'max_consumption', 'sort_by', 'sort_order'
             ]);
 
-            $perPage = $request->get('per_page', 15);
+            $perPage = $request->get('per_page', 25);
             $clients = $this->clientService->getClients($filters, $perPage);
 
             return $this->paginationResponse(

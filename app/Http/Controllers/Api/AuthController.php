@@ -3,22 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\LoginRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+
     /**
      * Register a new user.
      */
     public function register(Request $request)
     {
         try {
-            $request->validate([
+            $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'username' => 'required|string|max:255|unique:users,username',
                 'email' => 'required|string|email|max:255|unique:users,email',
@@ -29,13 +29,13 @@ class AuthController extends Controller
             ]);
 
             $user = User::create([
-                'name' => $request->name,
-                'username' => $request->username,
-                'email' => $request->email,
-                'password' => Hash::make($request->password),
-                'phone' => $request->phone,
-                'mobile' => $request->mobile,
-                'position' => $request->position,
+                'name' => $validated['name'],
+                'username' => $validated['username'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'phone' => $validated['phone'] ?? null,
+                'mobile' => $validated['mobile'] ?? null,
+                'position' => $validated['position'] ?? null,
                 'is_active' => true,
             ]);
 
@@ -50,77 +50,75 @@ class AuthController extends Controller
                 'email' => $user->email,
             ]);
 
-            return $this->createdResponse([
+            return $this->successResponse([
                 'user' => $user->load('roles'),
                 'token' => $token,
-            ], 'Usuario registrado exitosamente');
+            ], 'Usuario registrado exitosamente', 201, []);
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al registrar usuario');
         }
     }
 
-    
-    public function login(Request $request)
+    /**
+     * Login user.
+     */
+    public function login(LoginRequest $request)
     {
-        $request->validate([
-            'username' => 'required_without:email|string|max:255',
-            'email' => 'required_without:username|email|max:255',
-            'password' => 'required|string|min:1',
-        ]);
+        try {
+            $identifier = $request->getIdentifier();
+            $identifierType = $request->getIdentifierType();
 
-        // Buscar usuario por email o username
-        $user = User::where(function ($query) use ($request) {
-            if ($request->filled('email')) {
-                $query->where('email', $request->email);
+            // Buscar usuario por email o username
+            $user = User::where(function ($query) use ($identifier, $identifierType) {
+                if ($identifierType === 'email') {
+                    $query->where('email', $identifier);
+                } else {
+                    $query->where('username', $identifier);
+                }
+            })->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                \Log::warning('AuthController: Login failed - invalid credentials', [
+                    'identifier' => $identifier,
+                    'identifier_type' => $identifierType
+                ]);
+
+                return $this->unauthorizedResponse('Las credenciales proporcionadas son incorrectas');
             }
-            if ($request->filled('username')) {
-                $query->orWhere('username', $request->username);
+
+            if (!$user->is_active) {
+                \Log::warning('AuthController: Login failed - account deactivated', [
+                    'user_id' => $user->id,
+                    'identifier' => $identifier
+                ]);
+
+                return $this->forbiddenResponse('La cuenta está desactivada');
             }
-        })->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            \Log::warning('AuthController: Login failed - invalid credentials', [
-                'identifier' => $request->email ?? $request->username,
-                'identifier_type' => $request->filled('email') ? 'email' : 'username'
-            ]);
+            $token = $user->createToken('auth_token')->plainTextToken;
 
-            return $this->errorResponse(
-                'Las credenciales proporcionadas son incorrectas',
-                [],
-                401
-            );
-        }
+            // Cargar roles del usuario explícitamente
+            $userWithRoles = $user->load('roles');
 
-        if (!$user->is_active) {
-            \Log::warning('AuthController: Login failed - account deactivated', [
+            // Actualizar último login
+            $user->update(['last_login_at' => now()]);
+
+            \Log::info('AuthController: Login successful', [
                 'user_id' => $user->id,
-                'identifier' => $request->email ?? $request->username
+                'identifier' => $identifier,
+                'identifier_type' => $identifierType,
+                'roles_loaded' => $userWithRoles->relationLoaded('roles'),
+                'roles_count' => $userWithRoles->roles->count(),
+                'user_roles' => $userWithRoles->roles->pluck('name')->toArray()
             ]);
 
-            return $this->forbiddenResponse('La cuenta está desactivada');
+            return $this->successResponse([
+                'user' => $userWithRoles,
+                'token' => $token,
+            ], 'Inicio de sesión exitoso', 200, []);
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error en el proceso de autenticación');
         }
-
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        // Cargar roles del usuario explícitamente
-        $userWithRoles = $user->load('roles');
-
-        // Actualizar último login
-        $user->update(['last_login_at' => now()]);
-
-        \Log::info('AuthController: Login successful', [
-            'user_id' => $user->id,
-            'identifier' => $request->email ?? $request->username,
-            'identifier_type' => $request->filled('email') ? 'email' : 'username',
-            'roles_loaded' => $userWithRoles->relationLoaded('roles'),
-            'roles_count' => $userWithRoles->roles->count(),
-            'user_roles' => $userWithRoles->roles->pluck('name')->toArray()
-        ]);
-
-        return $this->successResponse([
-            'user' => $userWithRoles,
-            'token' => $token,
-        ], 'Inicio de sesión exitoso');
     }
 
     /**
@@ -137,7 +135,7 @@ class AuthController extends Controller
                 'username' => $user->username,
             ]);
 
-            return $this->successResponse(null, 'Sesión cerrada exitosamente');
+            return $this->successResponse(null, 'Sesión cerrada exitosamente', 200, []);
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al cerrar sesión');
         }
@@ -153,7 +151,7 @@ class AuthController extends Controller
 
             return $this->successResponse([
                 'user' => $user,
-            ], 'Información del usuario obtenida exitosamente');
+            ], 'Información del usuario obtenida exitosamente', 200, []);
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al obtener información del usuario');
         }
@@ -176,7 +174,7 @@ class AuthController extends Controller
 
             return $this->successResponse([
                 'token' => $token,
-            ], 'Token actualizado exitosamente');
+            ], 'Token actualizado exitosamente', 200, []);
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al actualizar token');
         }

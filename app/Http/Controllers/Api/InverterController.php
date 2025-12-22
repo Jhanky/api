@@ -62,22 +62,7 @@ class InverterController extends Controller
             $perPage = $request->get('per_page', 15);
             $inverters = $query->paginate($perPage);
 
-            return response()->json([
-                'success' => true,
-                'data' => $inverters->items(),
-                'pagination' => [
-                    'current_page' => $inverters->currentPage(),
-                    'per_page' => $inverters->perPage(),
-                    'total' => $inverters->total(),
-                    'last_page' => $inverters->lastPage(),
-                    'from' => $inverters->firstItem(),
-                    'to' => $inverters->lastItem(),
-                    'has_more_pages' => $inverters->hasMorePages(),
-                ],
-                'message' => 'Inversores obtenidos exitosamente',
-                'timestamp' => now()->toISOString(),
-                'request_id' => Str::uuid()->toString()
-            ]);
+            return $this->paginationResponse($inverters, 'Inversores obtenidos exitosamente');
 
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al obtener los inversores');
@@ -101,11 +86,7 @@ class InverterController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Errores de validación',
-                    'errors' => $validator->errors()
-                ], 422);
+                return $this->validationErrorResponse($validator->errors());
             }
 
             $inverterData = [
@@ -127,18 +108,10 @@ class InverterController extends Controller
 
             $inverter = Inverter::create($inverterData);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Inversor creado exitosamente',
-                'data' => $inverter
-            ], 201);
+            return $this->createdResponse($inverter, 'Inversor creado exitosamente');
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al crear el inversor',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al crear el inversor');
         }
     }
 
@@ -150,18 +123,12 @@ class InverterController extends Controller
         try {
             $inverter = Inverter::findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Inversor obtenido exitosamente',
-                'data' => $inverter
-            ]);
+            return $this->successResponse($inverter, 'Inversor obtenido exitosamente');
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Inversor');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Inversor no encontrado',
-                'error' => $e->getMessage()
-            ], 404);
+            return $this->handleException($e, 'Error al obtener el inversor');
         }
     }
 
@@ -171,34 +138,20 @@ class InverterController extends Controller
     public function update(Request $request, $id): JsonResponse
     {
         try {
+            // ========== DEBUG: VER QUÉ DATOS LLEGAN ==========
+            \Log::info('🔧 InverterController::update - Datos recibidos:', [
+                'id' => $id,
+                'method' => $request->method(),
+                'content_type' => $request->header('Content-Type'),
+                'all_data' => $request->all(),
+                'all_keys' => array_keys($request->all()),
+                '_method' => $request->get('_method'),
+            ]);
+            // ==================================================
+
             $inverter = Inverter::findOrFail($id);
 
-            // Debug logging for FormData
-            $allData = $request->all();
-            \Log::info('Inverter update request data:', [
-                'request_method' => $request->method(),
-                'content_type' => $request->header('Content-Type'),
-                'all_data' => $allData,
-                'all_data_keys' => array_keys($allData),
-                'brand_from_all' => $allData['brand'] ?? 'NOT_FOUND',
-                'model_from_all' => $allData['model'] ?? 'NOT_FOUND',
-                'power_from_all' => $allData['power'] ?? 'NOT_FOUND',
-                'system_type_from_all' => $allData['system_type'] ?? 'NOT_FOUND',
-                'grid_type_from_all' => $allData['grid_type'] ?? 'NOT_FOUND',
-                'price_from_all' => $allData['price'] ?? 'NOT_FOUND',
-                'has_file' => $request->hasFile('technical_sheet'),
-                'file_info' => $request->file('technical_sheet') ? 'File present' : 'No file'
-            ]);
-
-            $validator = Validator::make([
-                'brand' => $allData['brand'] ?? null,
-                'model' => $allData['model'] ?? null,
-                'power' => $allData['power'] ?? null,
-                'system_type' => $allData['system_type'] ?? null,
-                'grid_type' => $allData['grid_type'] ?? null,
-                'price' => $allData['price'] ?? null,
-                'technical_sheet' => $request->file('technical_sheet')
-            ], [
+            $validator = Validator::make($request->all(), [
                 'brand' => 'sometimes|string|max:100',
                 'model' => 'sometimes|string|max:100',
                 'power' => 'sometimes|numeric|min:0',
@@ -209,20 +162,17 @@ class InverterController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Errores de validación',
-                    'errors' => $validator->errors()
-                ], 422);
+                \Log::error('❌ InverterController - Validación falló:', $validator->errors()->toArray());
+                return $this->validationErrorResponse($validator->errors()->toArray());
             }
 
             $inverterData = [
-                'brand' => $allData['brand'] ?? null,
-                'model' => $allData['model'] ?? null,
-                'power' => $allData['power'] ?? null,
-                'system_type' => $allData['system_type'] ?? null,
-                'grid_type' => $allData['grid_type'] ?? null,
-                'price' => $allData['price'] ?? null,
+                'brand' => $request->get('brand'),
+                'model' => $request->get('model'),
+                'power' => $request->get('power'),
+                'system_type' => $request->get('system_type'),
+                'grid_type' => $request->get('grid_type'),
+                'price' => $request->get('price'),
             ];
 
             // Manejar la actualización del archivo PDF
@@ -241,18 +191,12 @@ class InverterController extends Controller
 
             $inverter->update($inverterData);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Inversor actualizado exitosamente',
-                'data' => $inverter->fresh()
-            ]);
+            return $this->updatedResponse($inverter->fresh(), 'Inversor actualizado exitosamente');
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Inversor');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al actualizar el inversor',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al actualizar el inversor');
         }
     }
 
@@ -271,17 +215,12 @@ class InverterController extends Controller
 
             $inverter->delete();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Inversor eliminado exitosamente'
-            ]);
+            return $this->deletedResponse('Inversor eliminado exitosamente');
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('Inversor');
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al eliminar el inversor',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->handleException($e, 'Error al eliminar el inversor');
         }
     }
 

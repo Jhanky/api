@@ -29,14 +29,20 @@ class UserController extends Controller
                 });
             }
 
-            // Filter by role
-            if ($request->has('role')) {
+            // Filter by role_id
+            if ($request->filled('role_id')) {
                 $query->whereHas('roles', function ($q) use ($request) {
-                    $q->where('name', $request->role);
+                    $q->where('roles.id', $request->role_id);
                 });
             }
 
-            $users = $query->paginate($request->get('per_page', 15));
+            // Filter by is_active status
+            if ($request->filled('is_active')) {
+                $isActive = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN);
+                $query->where('is_active', $isActive);
+            }
+
+            $users = $query->paginate($request->get('per_page', 25));
 
             // Transform users to include role information
             $users->getCollection()->transform(function ($user) {
@@ -399,6 +405,28 @@ class UserController extends Controller
             ], 'Opciones de usuarios y roles obtenidas exitosamente');
         } catch (\Exception $e) {
             return $this->handleException($e, 'Error al obtener opciones de usuarios');
+        }
+    }
+
+    /**
+     * Update user theme.
+     */
+    public function updateTheme(Request $request)
+    {
+        try {
+            $request->validate([
+                'theme' => 'required|in:light,dark,system',
+            ]);
+
+            $user = $request->user();
+            $user->update(['theme' => $request->theme]);
+
+            return $this->successResponse([
+                'user' => $user->load('roles'),
+                'theme' => $request->theme,
+            ], 'Tema actualizado exitosamente');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Error al actualizar tema');
         }
     }
 
