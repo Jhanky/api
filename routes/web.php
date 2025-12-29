@@ -51,4 +51,4 @@ Route::get('/api-info', function () {
 });
 
 // Ruta de prueba para Inertia.js + React
-Route::get('/test-inertia', [App\Http\Controllers\TestController::class, 'index']);
+// Route::get('/test-inertia', [App\Http\Controllers\TestController::class, 'index']);

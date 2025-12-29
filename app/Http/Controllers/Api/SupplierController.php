@@ -250,6 +250,8 @@ class SupplierController extends Controller
                 return $supplier->invoices->sum('total_value');
             });
             
+            $averageInvoicedPerSupplier = $suppliersWithInvoices > 0 ? $totalInvoiced / $suppliersWithInvoices : 0;
+            
             // Top proveedores por monto facturado
             $topSuppliers = Supplier::withSum('invoices', 'total_value')
                 ->withCount('invoices')
@@ -264,6 +266,12 @@ class SupplierController extends Controller
                     unset($supplier->invoices_sum_total_value);
                     return $supplier;
                 });
+            
+            // Distribución por cantidad de facturas
+            $suppliersByInvoiceCount = Supplier::withCount('invoices')
+                ->get()
+                ->groupBy('invoices_count')
+                ->map->count();
 
             return response()->json([
                 'success' => true,
@@ -273,9 +281,11 @@ class SupplierController extends Controller
                     'active_suppliers' => $activeSuppliers,
                     'inactive_suppliers' => $inactiveSuppliers,
                     'suppliers_with_invoices' => $suppliersWithInvoices,
-                    'total_invoiced' => $totalInvoiced,
-                    'total_pending' => $totalPending,
-                    'top_suppliers' => $topSuppliers
+                    'total_invoiced' => number_format($totalInvoiced, 2, '.', ''),
+                    'total_pending' => number_format($totalPending, 2, '.', ''),
+                    'average_invoiced_per_supplier' => number_format($averageInvoicedPerSupplier, 2, '.', ''),
+                    'top_suppliers' => $topSuppliers,
+                    'suppliers_by_invoice_count' => $suppliersByInvoiceCount
                 ]
             ]);
         } catch (\Exception $e) {
@@ -353,7 +363,7 @@ class SupplierController extends Controller
             }
             
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'invoice_date');
+            $sortBy = $request->get('sort_by', 'issue_date');
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
             

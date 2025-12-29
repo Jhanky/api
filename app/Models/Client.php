@@ -78,6 +78,14 @@ class Client extends Model
     }
 
     /**
+     * Get the projects for the client.
+     */
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
+    }
+
+    /**
      * Get the primary contact person.
      */
     public function primaryContact()

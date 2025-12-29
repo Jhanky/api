@@ -13,16 +13,13 @@ return new class extends Migration
     {
         Schema::create('batteries', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('material_id')->constrained()->onDelete('cascade');
-            $table->string('battery_type', 50)->comment('LiFePO4, AGM, Gel, etc.');
-            $table->decimal('voltage', 5, 2)->comment('Voltaje nominal en V');
-            $table->decimal('capacity', 8, 2)->comment('Capacidad en Ah');
-            $table->decimal('energy_capacity', 8, 2)->comment('Capacidad energética en kWh');
-            $table->string('chemistry', 50)->nullable()->comment('Química de la batería');
-            $table->integer('cycle_life')->nullable()->comment('Ciclos de vida');
-            $table->decimal('depth_of_discharge', 5, 2)->nullable()->comment('Profundidad de descarga en %');
-            $table->decimal('efficiency', 5, 2)->nullable()->comment('Eficiencia en %');
-            $table->string('warranty_years', 20)->nullable()->comment('Garantía en años');
+            $table->string('brand');
+            $table->string('model');
+            $table->decimal('capacity', 8, 2);
+            $table->decimal('voltage', 5, 2);
+            $table->string('type');
+            $table->decimal('price', 10, 2);
+            $table->string('technical_sheet_url')->nullable();
             $table->timestamps();
         });
     }

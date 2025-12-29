@@ -17,13 +17,10 @@ class Project extends Model
         'code',
         'client_id',
         'quotation_id',
-        'project_type_id',
         'current_state_id',
         'name',
         'description',
         'installation_address',
-        'department_id',
-        'city_id',
         'coordinates',
         'start_date',
         'estimated_end_date',
@@ -57,24 +54,9 @@ class Project extends Model
         return $this->belongsTo(Quotation::class);
     }
 
-    public function projectType(): BelongsTo
-    {
-        return $this->belongsTo(ProjectType::class, 'project_type_id');
-    }
-
     public function currentState(): BelongsTo
     {
         return $this->belongsTo(ProjectState::class, 'current_state_id');
-    }
-
-    public function department(): BelongsTo
-    {
-        return $this->belongsTo(Department::class);
-    }
-
-    public function city(): BelongsTo
-    {
-        return $this->belongsTo(City::class);
     }
 
     public function projectManager(): BelongsTo
@@ -92,19 +74,14 @@ class Project extends Model
         return $this->hasMany(ProjectStateHistory::class);
     }
 
+    public function notes(): HasMany
+    {
+        return $this->hasMany(ProjectNote::class);
+    }
+
     public function technicalSpecs(): HasOne
     {
         return $this->hasOne(ProjectTechnicalSpecs::class);
-    }
-
-    public function maintenances(): HasMany
-    {
-        return $this->hasMany(Maintenance::class);
-    }
-
-    public function tickets(): HasMany
-    {
-        return $this->hasMany(Ticket::class);
     }
 
     public function projectDocuments(): HasMany
@@ -112,17 +89,22 @@ class Project extends Model
         return $this->hasMany(ProjectDocument::class);
     }
 
-    // Nota: Relaciones projectComments y projectMaterialAssignments removidas
+    // Nota: Relaciones projectComments, projectMaterialAssignments y toolAssignments removidas
     // porque los modelos correspondientes no existen en el sistema actual.
-
-    public function toolAssignments(): HasMany
-    {
-        return $this->hasMany(ToolAssignment::class, 'assigned_to_project_id');
-    }
 
     public function costCenter(): HasOne
     {
         return $this->hasOne(CostCenter::class);
+    }
+
+    public function upmeDetail(): HasOne
+    {
+        return $this->hasOne(ProjectUpmeDetail::class);
+    }
+
+    public function milestones(): HasMany
+    {
+        return $this->hasMany(Milestone::class);
     }
 
     // Scopes
@@ -134,11 +116,6 @@ class Project extends Model
     public function scopeByState($query, $stateId)
     {
         return $query->where('current_state_id', $stateId);
-    }
-
-    public function scopeByType($query, $typeId)
-    {
-        return $query->where('project_type_id', $typeId);
     }
 
     public function scopeByPriority($query, $priority)
@@ -184,7 +161,7 @@ class Project extends Model
             'completed' => 5,
         ];
 
-        $currentPhase = $this->currentState->phase ?? 'commercial';
+        $currentPhase = $this->currentState?->phase ?? 'commercial';
         $currentOrder = $phaseOrder[$currentPhase] ?? 1;
 
         return min(100, ($currentOrder / 5) * 100);
@@ -204,7 +181,7 @@ class Project extends Model
         return (($this->contracted_value_cop - $this->total_cost_cop) / $this->contracted_value_cop) * 100;
     }
 
-    public function changeState(ProjectState $newState, User $user, string $reason = null, string $notes = null): void
+    public function changeState(ProjectState $newState, User $user, ?string $reason = null, ?string $notes = null): void
     {
         $oldState = $this->currentState;
 

@@ -57,6 +57,22 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the projects managed by the user.
+     */
+    public function managedProjects(): HasMany
+    {
+        return $this->hasMany(Project::class, 'project_manager_id');
+    }
+
+    /**
+     * Get the projects led by the user.
+     */
+    public function ledProjects(): HasMany
+    {
+        return $this->hasMany(Project::class, 'technical_leader_id');
+    }
+
+    /**
      * Check if user has a specific role.
      */
     public function hasRole(string $roleSlug): bool
@@ -81,6 +97,16 @@ class User extends Authenticatable
         if ($role && !$this->hasRole($roleSlug)) {
             $this->roles()->attach($role->id, ['assigned_by' => auth()->id()]);
         }
+    }
+
+    /**
+     * Scope to filter by role.
+     */
+    public function scopeRole($query, $roleSlug)
+    {
+        return $query->whereHas('roles', function ($q) use ($roleSlug) {
+            $q->where('slug', $roleSlug);
+        });
     }
 
     /**

@@ -219,6 +219,7 @@ Route::middleware(['auth:sanctum', 'api'])->group(function () {
     // Rutas de centros de costos
     Route::apiResource('cost-centers', CostCenterController::class);
     Route::get('cost-centers/search', [CostCenterController::class, 'search']); // Búsqueda de centros de costos
+    Route::get('cost-centers/{id}/evolution', [CostCenterController::class, 'evolution']); // Evolución mensual
     Route::get('cost-centers/{id}/invoices', [CostCenterController::class, 'invoices']); // Facturas del centro de costo
     Route::get('cost-centers-statistics', [CostCenterController::class, 'statistics']); // Estadísticas de centros de costos
 
@@ -243,13 +244,26 @@ Route::middleware(['auth:sanctum', 'api'])->group(function () {
     Route::get('project-states/{id}', [\App\Http\Controllers\Api\ProjectStateController::class, 'show']); // Ver estado específico
 
     // Rutas de proyectos
-    Route::get('projects/statistics', [ProjectController::class, 'statistics']); // Estadísticas de proyectos
+    Route::get('projects/statistics', [\App\Http\Controllers\Api\ProjectController::class, 'statistics']); // Estadísticas de proyectos
     Route::get('projects', [\App\Http\Controllers\Api\ProjectController::class, 'index']); // Listar proyectos
     Route::post('projects', [\App\Http\Controllers\Api\ProjectController::class, 'store']); // Crear proyecto
     Route::get('projects/{project}', [\App\Http\Controllers\Api\ProjectController::class, 'show']); // Mostrar proyecto específico
     Route::put('projects/{project}', [\App\Http\Controllers\Api\ProjectController::class, 'update']); // Actualizar proyecto
     Route::delete('projects/{project}', [\App\Http\Controllers\Api\ProjectController::class, 'destroy']); // Eliminar proyecto
-    Route::patch('projects/{project}/state', [\App\Http\Controllers\Api\ProjectController::class, 'updateState']); // Cambiar estado del proyecto
+    Route::patch('projects/{project}/status', [\App\Http\Controllers\Api\ProjectController::class, 'updateStatus']); // Cambiar estado del proyecto
+    Route::get('projects/{project}/history', [\App\Http\Controllers\Api\ProjectHistoryController::class, 'index']);
+    Route::post('projects/{project}/history/note', [\App\Http\Controllers\Api\ProjectHistoryController::class, 'addNote']);
+    Route::patch('projects/{project}/history/{history}', [\App\Http\Controllers\Api\ProjectHistoryController::class, 'update']);
+
+    // Rutas de requisitos de documentos
+    Route::get('projects/{project}/requirements', [\App\Http\Controllers\Api\ProjectRequirementsController::class, 'index']);
+    Route::post('projects/{project}/documents', [\App\Http\Controllers\Api\ProjectRequirementsController::class, 'store']);
+    Route::get('projects/{project}/documents', [\App\Http\Controllers\Api\ProjectRequirementsController::class, 'allDocuments']);
+    Route::get('projects/{project}/documents/{document}/download', [\App\Http\Controllers\Api\ProjectRequirementsController::class, 'download']);
+
+    // Rutas UPME
+    Route::patch('projects/{project}/upme', [\App\Http\Controllers\Api\ProjectUpmeController::class, 'update']);
+    Route::get('projects/{project}/upme', [\App\Http\Controllers\Api\ProjectUpmeController::class, 'index']);
 
     // Rutas de imágenes de proyectos
     Route::prefix('projects/{project}/images')->group(function () {

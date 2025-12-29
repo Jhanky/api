@@ -10,6 +10,8 @@ class ProjectStateHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'project_state_history';
+
     protected $fillable = [
         'project_id',
         'from_state_id',
@@ -18,10 +20,15 @@ class ProjectStateHistory extends Model
         'notes',
         'changed_by',
         'changed_at',
+        'started_at',
+        'ended_at',
+        'duration_days',
     ];
 
     protected $casts = [
         'changed_at' => 'datetime',
+        'started_at' => 'datetime',
+        'ended_at' => 'datetime',
     ];
 
     // Relationships

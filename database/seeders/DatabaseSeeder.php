@@ -16,11 +16,15 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSeeder::class,
             ClientTypeSeeder::class,
+            ClientSeeder::class,
+            GridTypeSeeder::class,
+            SystemTypeSeeder::class,
             QuotationStatusSeeder::class,
             ProjectStateSeeder::class,
             PanelSeeder::class,
             BatterySeeder::class,
             InverterSeeder::class,
+            ProjectManagementSeeder::class,
         ]);
     }
 }

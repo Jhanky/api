@@ -11,8 +11,8 @@ class SystemType extends Model
 
     protected $fillable = [
         'name',
+        'code',
         'description',
-        'category',
         'is_active',
     ];
 

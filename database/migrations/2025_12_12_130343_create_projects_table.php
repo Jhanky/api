@@ -16,7 +16,6 @@ return new class extends Migration
             $table->string('code', 20)->unique()->comment('PROY-2024-0001');
             $table->foreignId('client_id')->constrained()->onDelete('restrict')->onUpdate('cascade');
             $table->foreignId('quotation_id')->nullable()->constrained()->onDelete('set null')->onUpdate('cascade')->comment('Cotización que originó el proyecto');
-            $table->foreignId('project_type_id')->constrained()->onDelete('restrict')->onUpdate('cascade');
             $table->foreignId('current_state_id')->constrained('project_states')->onDelete('restrict')->onUpdate('cascade');
             $table->string('name', 255);
             $table->text('description')->nullable();

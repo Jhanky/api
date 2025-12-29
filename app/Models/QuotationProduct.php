@@ -49,6 +49,45 @@ class QuotationProduct extends Model
         return $query->where('product_type', $type);
     }
 
+    // Accessors
+    public function getSpecsAttribute(): array
+    {
+        // Safely decode snapshot_specs, return empty array if invalid
+        if (is_array($this->snapshot_specs)) {
+            return $this->snapshot_specs;
+        }
+
+        if (is_string($this->snapshot_specs)) {
+            // Handle empty or null strings
+            $trimmed = trim($this->snapshot_specs);
+            if (empty($trimmed) || $trimmed === 'null') {
+                return [];
+            }
+
+            try {
+                $decoded = json_decode($this->snapshot_specs, true, 512, JSON_THROW_ON_ERROR);
+                return is_array($decoded) ? $decoded : [];
+            } catch (\JsonException $e) {
+                // Log the error for debugging but don't throw
+                \Log::warning('Invalid JSON in snapshot_specs', [
+                    'product_id' => $this->id,
+                    'snapshot_specs' => $this->snapshot_specs,
+                    'error' => $e->getMessage()
+                ]);
+                return [];
+            } catch (\Exception $e) {
+                // Fallback for any other error
+                \Log::warning('Unexpected error decoding snapshot_specs', [
+                    'product_id' => $this->id,
+                    'error' => $e->getMessage()
+                ]);
+                return [];
+            }
+        }
+
+        return [];
+    }
+
     // Helper methods
     public function getSubtotal(): float
     {
@@ -77,5 +116,10 @@ class QuotationProduct extends Model
     public function isBattery(): bool
     {
         return $this->product_type === 'battery';
+    }
+
+    public function getSpec(string $key, $default = null)
+    {
+        return $this->specs[$key] ?? $default;
     }
 }

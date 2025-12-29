@@ -27,17 +27,12 @@ class PanelController extends Controller
                 $search = $request->get('search');
                 $query->where(function($q) use ($search) {
                     $q->where('brand', 'like', "%{$search}%")
-                      ->orWhere('model', 'like', "%{$search}%")
-                      ->orWhere('type', 'like', "%{$search}%");
+                      ->orWhere('model', 'like', "%{$search}%");
                 });
             }
 
             if ($request->has('brand')) {
                 $query->byBrand($request->get('brand'));
-            }
-
-            if ($request->has('type')) {
-                $query->byType($request->get('type'));
             }
 
             if ($request->has('min_power') || $request->has('max_power')) {
@@ -74,7 +69,6 @@ class PanelController extends Controller
                 'brand' => 'required|string|max:100',
                 'model' => 'required|string|max:100',
                 'power' => 'required|numeric|min:0',
-                'type' => 'required|string|max:50',
                 'price' => 'required|numeric|min:0',
                 'technical_sheet' => 'nullable|file|mimes:pdf|max:10240' // 10MB máximo
             ]);
@@ -87,7 +81,6 @@ class PanelController extends Controller
                 'brand' => $request->get('brand'),
                 'model' => $request->get('model'),
                 'power' => $request->get('power'),
-                'type' => $request->get('type'),
                 'price' => $request->get('price'),
             ];
 
@@ -154,7 +147,6 @@ class PanelController extends Controller
                 'brand' => 'sometimes|string|max:100',
                 'model' => 'sometimes|string|max:100',
                 'power' => 'sometimes|numeric|min:0',
-                'type' => 'sometimes|string|max:50',
                 'price' => 'sometimes|numeric|min:0',
                 'technical_sheet' => 'nullable|file|mimes:pdf|max:10240'
             ]);
@@ -167,7 +159,6 @@ class PanelController extends Controller
                 'brand' => $request->get('brand'),
                 'model' => $request->get('model'),
                 'power' => $request->get('power'),
-                'type' => $request->get('type'),
                 'price' => $request->get('price'),
             ];
 

@@ -14,6 +14,7 @@ class ProjectDocument extends Model
     protected $fillable = [
         'code',
         'project_id',
+        'required_document_id',
         'document_type_id',
         'milestone_id',
         'name',
@@ -58,6 +59,14 @@ class ProjectDocument extends Model
     public function documentType(): BelongsTo
     {
         return $this->belongsTo(DocumentType::class);
+    }
+
+    /**
+     * Get the required document definition.
+     */
+    public function requiredDocument(): BelongsTo
+    {
+        return $this->belongsTo(RequiredDocument::class);
     }
 
     /**

@@ -13,12 +13,22 @@ class ProjectState extends Model
     protected $fillable = [
         'name',
         'code',
+        'slug',
         'description',
+        'color',
+        'icon',
+        'phase',
+        'display_order',
+        'estimated_duration',
+        'is_final',
+        'requires_approval',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_final' => 'boolean',
+        'requires_approval' => 'boolean',
     ];
 
     // Relationships

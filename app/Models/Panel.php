@@ -13,7 +13,6 @@ class Panel extends Model
         'brand',
         'model',
         'power',
-        'type',
         'price',
         'technical_sheet_url',
     ];
@@ -31,11 +30,6 @@ class Panel extends Model
     public function scopeByBrand($query, $brand)
     {
         return $query->where('brand', $brand);
-    }
-
-    public function scopeByType($query, $type)
-    {
-        return $query->where('type', $type);
     }
 
     public function scopeByPowerRange($query, $minPower, $maxPower)

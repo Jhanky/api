@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Supplier;
 use App\Models\CostCenter;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
@@ -17,6 +18,8 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class InvoiceController extends Controller
 {
+    use ApiResponseTrait;
+
     /**
      * Display a listing of the resource.
      */
@@ -66,7 +69,7 @@ class InvoiceController extends Controller
             }
 
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'invoice_id');
+            $sortBy = $request->get('sort_by', 'issue_date');
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
@@ -93,24 +96,32 @@ class InvoiceController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
+            $messages = [
+                'invoice_number.unique' => 'La factura ya fue registrada en la base de datos',
+            ];
+
             $request->validate([
-                'invoice_number' => 'required|string|max:100',
+                'invoice_number' => 'required|string|max:100|unique:invoices,invoice_number',
                 'invoice_date' => 'required|date',
                 'due_date' => 'nullable|date|after_or_equal:invoice_date',
-                'subtotal' => 'required|numeric|min:0',
+                'amount_before_iva' => 'required|numeric|min:0',
                 'retention' => 'nullable|numeric|min:0',
                 'has_retention' => 'nullable|boolean',
                 'description' => 'nullable|string|max:1000',
                 'status' => 'required|in:PENDIENTE,PAGADA',
                 'sale_type' => 'required|in:CONTADO,CREDITO',
                 'payment_method_id' => 'nullable|exists:payment_methods,id',
-                'provider_id' => 'required|exists:providers,provider_id',
+                'provider_id' => 'required|exists:suppliers,supplier_id',
                 'cost_center_id' => 'required|exists:cost_centers,cost_center_id',
                 'payment_support' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240', // 10MB max
                 'invoice_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240' // 10MB max
-            ]);
+            ], $messages);
 
             $data = $request->all();
+            $data['issue_date'] = $request->invoice_date;
+            if ($request->has('provider_id')) {
+                $data['supplier_id'] = $request->provider_id;
+            }
 
             // Manejar subida de archivos
             if ($request->hasFile('payment_support')) {
@@ -126,7 +137,7 @@ class InvoiceController extends Controller
             }
 
             $invoice = Invoice::create($data);
-            $invoice->load(['provider', 'costCenter', 'paymentMethod']);
+            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
 
             return response()->json([
                 'success' => true,
@@ -154,7 +165,7 @@ class InvoiceController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $invoice = Invoice::with(['provider', 'costCenter'])->findOrFail($id);
+            $invoice = Invoice::with(['supplier', 'costCenter'])->findOrFail($id);
 
             return response()->json([
                 'success' => true,
@@ -182,24 +193,32 @@ class InvoiceController extends Controller
         try {
             $invoice = Invoice::findOrFail($id);
 
+            $messages = [
+                'invoice_number.unique' => 'La factura ya fue registrada en la base de datos',
+            ];
+
             $request->validate([
-                'invoice_number' => 'required|string|max:100',
+                'invoice_number' => "required|string|max:100|unique:invoices,invoice_number,{$id},invoice_id",
                 'invoice_date' => 'required|date',
                 'due_date' => 'nullable|date|after_or_equal:invoice_date',
-                'subtotal' => 'required|numeric|min:0',
+                'amount_before_iva' => 'required|numeric|min:0',
                 'retention' => 'nullable|numeric|min:0',
                 'has_retention' => 'nullable|boolean',
                 'description' => 'nullable|string|max:1000',
                 'status' => 'required|in:PENDIENTE,PAGADA',
                 'sale_type' => 'required|in:CONTADO,CREDITO',
                 'payment_method_id' => 'nullable|exists:payment_methods,id',
-                'provider_id' => 'required|exists:providers,provider_id',
+                'provider_id' => 'required|exists:suppliers,supplier_id',
                 'cost_center_id' => 'required|exists:cost_centers,cost_center_id',
                 'payment_support' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240', // 10MB max
                 'invoice_file' => 'nullable|file|mimes:pdf,jpeg,png|max:10240' // 10MB max
-            ]);
+            ], $messages);
 
             $data = $request->all();
+            $data['issue_date'] = $request->invoice_date;
+            if ($request->has('provider_id')) {
+                $data['supplier_id'] = $request->provider_id;
+            }
 
             // Manejar subida de archivos
             if ($request->hasFile('payment_support')) {
@@ -225,7 +244,7 @@ class InvoiceController extends Controller
             }
 
             $invoice->update($data);
-            $invoice->load(['provider', 'costCenter', 'paymentMethod']);
+            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
 
             return response()->json([
                 'success' => true,
@@ -292,7 +311,7 @@ class InvoiceController extends Controller
             ]);
 
             $invoice->update(['status' => $request->status]);
-            $invoice->load(['provider', 'costCenter', 'paymentMethod']);
+            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
 
             return response()->json([
                 'success' => true,
@@ -335,7 +354,7 @@ class InvoiceController extends Controller
             ]);
 
             // Construir query con filtros
-            $query = Invoice::with(['provider', 'costCenter', 'paymentMethod']);
+            $query = Invoice::with(['supplier', 'costCenter', 'paymentMethod']);
 
             // Aplicar filtros
             if ($request->has('status') && $request->status) {
@@ -343,7 +362,7 @@ class InvoiceController extends Controller
             }
 
             if ($request->has('provider_id') && $request->provider_id) {
-                $query->byProvider($request->provider_id);
+                $query->bySupplier($request->provider_id);
             }
 
             if ($request->has('cost_center_id') && $request->cost_center_id) {
@@ -359,17 +378,17 @@ class InvoiceController extends Controller
             }
 
             // Obtener facturas
-            $invoices = $query->orderBy('invoice_date', 'desc')->get();
+            $invoices = $query->orderBy('issue_date', 'desc')->get();
 
             // Preparar datos para respuesta
             $invoiceData = $invoices->map(function ($invoice) {
                 return [
                     'id' => $invoice->invoice_id,
                     'number' => $invoice->invoice_number,
-                    'date' => $invoice->invoice_date,
-                    'amount' => $invoice->total_amount,
+                    'date' => $invoice->issue_date,
+                    'amount' => $invoice->total_value,
                     'status' => $invoice->status,
-                    'provider' => $invoice->provider ? $invoice->provider->provider_name : 'Sin proveedor',
+                    'provider' => $invoice->supplier ? $invoice->supplier->provider_name : 'Sin proveedor',
                     'cost_center' => $invoice->costCenter ? $invoice->costCenter->cost_center_name : 'Sin centro de costo',
                     'due_date' => $invoice->due_date,
                     'description' => $invoice->description
@@ -402,9 +421,9 @@ class InvoiceController extends Controller
             $pendingInvoices = Invoice::pending()->count();
             $paidInvoices = Invoice::paid()->count();
             $overdueInvoices = Invoice::overdue()->count();
-            $totalAmount = Invoice::sum('total_amount');
-            $pendingAmount = Invoice::pending()->sum('total_amount');
-            $paidAmount = Invoice::paid()->sum('total_amount');
+            $totalAmount = Invoice::sum('total_value');
+            $pendingAmount = Invoice::pending()->sum('total_value');
+            $paidAmount = Invoice::paid()->sum('total_value');
 
             return response()->json([
                 'success' => true,
@@ -413,7 +432,7 @@ class InvoiceController extends Controller
                     'pending_invoices' => $pendingInvoices,
                     'paid_invoices' => $paidInvoices,
                     'overdue_invoices' => $overdueInvoices,
-                    'total_amount' => (float) $totalAmount,
+                    'total_value' => (float) $totalAmount,
                     'pending_amount' => (float) $pendingAmount,
                     'paid_amount' => (float) $paidAmount
                 ]
@@ -441,7 +460,7 @@ class InvoiceController extends Controller
 
             $oldCostCenter = $invoice->costCenter;
             $invoice->update(['cost_center_id' => $request->cost_center_id]);
-            $invoice->load(['provider', 'costCenter', 'paymentMethod']);
+            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
 
             return response()->json([
                 'success' => true,
@@ -498,7 +517,7 @@ class InvoiceController extends Controller
                 $message = 'Retención removida exitosamente';
             }
 
-            $invoice->load(['provider', 'costCenter', 'paymentMethod']);
+            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
 
             return response()->json([
                 'success' => true,
@@ -551,7 +570,7 @@ class InvoiceController extends Controller
             ]);
 
             // Construir query con filtros
-            $query = Invoice::with(['provider', 'costCenter', 'paymentMethod']);
+            $query = Invoice::with(['supplier', 'costCenter', 'paymentMethod']);
 
             // Aplicar filtros
             if ($request->has('status') && $request->status) {
@@ -559,7 +578,7 @@ class InvoiceController extends Controller
             }
 
             if ($request->has('provider_id') && $request->provider_id) {
-                $query->byProvider($request->provider_id);
+                $query->bySupplier($request->provider_id);
             }
 
             if ($request->has('cost_center_id') && $request->cost_center_id) {
@@ -575,7 +594,7 @@ class InvoiceController extends Controller
             }
 
             // Ordenar por fecha de factura
-            $invoices = $query->orderBy('invoice_date', 'desc')->get();
+            $invoices = $query->orderBy('issue_date', 'desc')->get();
 
             // Log para depuración
             \Log::info('Facturas encontradas para reporte: ' . $invoices->count());
@@ -749,10 +768,10 @@ class InvoiceController extends Controller
 
                     // Datos básicos
                     $sheet->setCellValue('A' . $row, $invoice->invoice_number ?? '');
-                    $sheet->setCellValue('B' . $row, $invoice->invoice_date ? $invoice->invoice_date->format('d/m/Y') : '');
+                    $sheet->setCellValue('B' . $row, $invoice->issue_date ? $invoice->issue_date->format('d/m/Y') : '');
                     
                     // Valores contables
-                    $sheet->setCellValue('C' . $row, $invoice->subtotal ?? 0);
+                    $sheet->setCellValue('C' . $row, $invoice->amount_before_iva ?? 0);
                     $sheet->setCellValue('D' . $row, $invoice->iva_amount ?? 0);
                     
                     // Retención como Sí/No
@@ -762,7 +781,7 @@ class InvoiceController extends Controller
                     }
                     $sheet->setCellValue('E' . $row, $retentionText);
                     
-                    $sheet->setCellValue('F' . $row, $invoice->total_amount ?? 0);
+                    $sheet->setCellValue('F' . $row, $invoice->total_value ?? 0);
                     $sheet->setCellValue('G' . $row, $invoice->status ?? '');
                     
                     // Tipo de compra (sale_type)
@@ -774,8 +793,8 @@ class InvoiceController extends Controller
                     
                     // Relaciones
                     $providerName = '';
-                    if ($invoice->provider) {
-                        $providerName = $invoice->provider->provider_name ?? '';
+                    if ($invoice->supplier) {
+                        $providerName = $invoice->supplier->provider_name ?? '';
                     }
                     $sheet->setCellValue('I' . $row, $providerName);
                     
@@ -893,13 +912,13 @@ class InvoiceController extends Controller
             // Manejar subida de soporte de pago
             if ($request->hasFile('payment_support')) {
                 // Eliminar archivo anterior si existe
-                if ($invoice->payment_support && \Storage::disk('public')->exists($invoice->payment_support)) {
-                    \Storage::disk('public')->delete($invoice->payment_support);
+                if ($invoice->payment_support_path && \Storage::disk('public')->exists($invoice->payment_support_path)) {
+                    \Storage::disk('public')->delete($invoice->payment_support_path);
                 }
                 
                 $paymentSupportFile = $request->file('payment_support');
-                $paymentSupportPath = $paymentSupportFile->store('invoices/payment_support', 'public');
-                $invoice->update(['payment_support' => $paymentSupportPath]);
+                $paymentSupportPath = $paymentSupportFile->store('invoices/payment_supports', 'public');
+                $invoice->update(['payment_support_path' => $paymentSupportPath]);
                 $uploadedFiles['payment_support'] = [
                     'path' => $paymentSupportPath,
                     'url' => url('storage/' . $paymentSupportPath),
@@ -917,7 +936,12 @@ class InvoiceController extends Controller
                 
                 $invoiceFile = $request->file('invoice_file');
                 $invoiceFilePath = $invoiceFile->store('invoices/invoice_files', 'public');
-                $invoice->update(['invoice_file' => $invoiceFilePath]);
+                $invoice->update([
+                    'invoice_file_path' => $invoiceFilePath,
+                    'invoice_file_name' => $invoiceFile->getClientOriginalName(),
+                    'invoice_file_type' => $invoiceFile->getClientMimeType(),
+                    'invoice_file_size' => $invoiceFile->getSize(),
+                ]);
                 $uploadedFiles['invoice_file'] = [
                     'path' => $invoiceFilePath,
                     'url' => url('storage/' . $invoiceFilePath),
@@ -926,7 +950,7 @@ class InvoiceController extends Controller
                 ];
             }
 
-            $invoice->load(['provider', 'costCenter', 'paymentMethod']);
+            $invoice->load(['supplier', 'costCenter']);
 
             return response()->json([
                 'success' => true,
@@ -935,8 +959,8 @@ class InvoiceController extends Controller
                     'invoice' => $invoice,
                     'uploaded_files' => $uploadedFiles,
                     'file_urls' => [
-                        'payment_support_url' => $invoice->payment_support ? url('storage/' . $invoice->payment_support) : null,
-                        'invoice_file_url' => $invoice->invoice_file ? url('storage/' . $invoice->invoice_file) : null
+                        'invoice_file_url' => $invoice->invoice_file_path ? url('storage/' . $invoice->invoice_file_path) : null,
+                        'payment_support_url' => $invoice->payment_support_path ? url('storage/' . $invoice->payment_support_path) : null
                     ]
                 ]
             ]);
@@ -1026,21 +1050,28 @@ class InvoiceController extends Controller
     public function storeWithSupplier(Request $request): JsonResponse
     {
         try {
+            $messages = [
+                'invoice_number.unique' => 'La factura ya fue registrada en la base de datos',
+            ];
+
             $request->validate([
                 // Datos del proveedor
                 'supplier_name' => 'required|string|max:255',
                 'supplier_nit' => 'required|string|max:50',
                 // Datos de la factura
-                'invoice_number' => 'required|string|max:100',
+                'invoice_number' => 'required|string|max:100|unique:invoices,invoice_number',
                 'invoice_date' => 'required|date',
                 'due_date' => 'nullable|date',
-                'subtotal' => 'nullable|numeric|min:0',
-                'iva_amount' => 'nullable|numeric|min:0',
-                'total_amount' => 'required|numeric|min:0',
+                'status' => 'nullable|string|in:pendiente,pagada,parcial,anulada',
+                'paid_amount' => 'nullable|numeric|min:0',
+            'amount_before_iva' => 'nullable|numeric|min:0',
+            'iva_percentage' => 'nullable|numeric|min:0|max:100',
+            'iva_amount' => 'nullable|numeric|min:0',
+            'total_value' => 'required|numeric|min:0',
                 'description' => 'nullable|string|max:1000',
                 'cost_center_id' => 'required|exists:cost_centers,cost_center_id',
                 'invoice_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:10240' // 10MB max
-            ]);
+            ], $messages);
 
             \DB::beginTransaction();
 
@@ -1061,11 +1092,12 @@ class InvoiceController extends Controller
                 'invoice_number' => $request->invoice_number,
                 'issue_date' => $request->invoice_date,
                 'due_date' => $request->due_date,
-                'amount_before_iva' => $request->subtotal ?? 0,
+                'amount_before_iva' => $request->amount_before_iva ?? 0,
                 'iva_percentage' => $request->iva_percentage ?? 19,
-                'total_value' => $request->total_amount,
+                'total_value' => $request->total_value,
                 'notes' => $request->description,
-                'status' => 'pendiente',
+                'status' => $request->status ?? 'pendiente',
+                'paid_amount' => $request->paid_amount ?? 0,
                 'payment_type' => 'total',
                 'supplier_id' => $supplier->supplier_id,
                 'cost_center_id' => $request->cost_center_id,
@@ -1091,31 +1123,19 @@ class InvoiceController extends Controller
 
             \Log::info('Factura creada exitosamente: ' . $invoice->invoice_number);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Factura registrada exitosamente',
-                'data' => [
-                    'invoice' => $invoice,
-                    'supplier' => $supplier,
-                    'supplier_created' => !Supplier::where('nit', $request->supplier_nit)->where('supplier_id', '!=', $supplier->supplier_id)->exists()
-                ]
-            ], 201);
+            return $this->successResponse([
+                'invoice' => $invoice,
+                'supplier' => $supplier,
+                'supplier_created' => !Supplier::where('nit', $request->supplier_nit)->where('supplier_id', '!=', $supplier->supplier_id)->exists()
+            ], 'Factura registrada exitosamente', 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             \DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
+            return $this->validationErrorResponse($e->errors());
         } catch (\Exception $e) {
             \DB::rollBack();
             \Log::error('Error al crear factura con proveedor: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al registrar factura',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->errorResponse('Error al registrar factura', [], 500, 'INTERNAL_ERROR');
         }
     }
 
@@ -1137,12 +1157,10 @@ class InvoiceController extends Controller
                         'label' => ($cc->code ? $cc->code . ' - ' : '') . $cc->name
                     ];
                 });
+            \Log::info('Centros de costo encontrados: ' . $costCenters->count());
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'cost_centers' => $costCenters
-                ]
+            return $this->successResponse([
+                'cost_centers' => $costCenters
             ]);
 
         } catch (\Exception $e) {
@@ -1158,19 +1176,22 @@ class InvoiceController extends Controller
     /**
      * Download the invoice file.
      */
-    public function downloadFile($id)
+    public function downloadFile(Request $request, $id)
     {
         try {
             $invoice = Invoice::findOrFail($id);
+            $type = $request->get('type', 'invoice');
             
-            if (!$invoice->invoice_file_path) {
+            $path = $type === 'support' ? $invoice->payment_support_path : $invoice->invoice_file_path;
+            
+            if (!$path) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Esta factura no tiene archivo adjunto'
+                    'message' => $type === 'support' ? 'Esta factura no tiene soporte de pago' : 'Esta factura no tiene archivo adjunto'
                 ], 404);
             }
 
-            $filePath = storage_path('app/public/' . $invoice->invoice_file_path);
+            $filePath = storage_path('app/public/' . $path);
             
             if (!file_exists($filePath)) {
                 \Log::error('Archivo no encontrado: ' . $filePath);
@@ -1180,8 +1201,15 @@ class InvoiceController extends Controller
                 ], 404);
             }
 
-            $fileName = $invoice->invoice_file_name ?: basename($invoice->invoice_file_path);
-            $mimeType = $invoice->invoice_file_type ?: mime_content_type($filePath);
+            // Determine filename and mime type
+            if ($type === 'support') {
+                $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+                $fileName = "soporte-pago-{$invoice->invoice_number}.{$extension}";
+                $mimeType = mime_content_type($filePath);
+            } else {
+                $fileName = $invoice->invoice_file_name ?: basename($path);
+                $mimeType = $invoice->invoice_file_type ?: mime_content_type($filePath);
+            }
 
             return response()->file($filePath, [
                 'Content-Type' => $mimeType,

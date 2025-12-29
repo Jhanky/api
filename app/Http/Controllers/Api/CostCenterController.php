@@ -16,7 +16,8 @@ class CostCenterController extends Controller
     {
         try {
             $query = CostCenter::withCount('invoices')
-                ->withSum('invoices', 'total_amount');
+                ->withSum('invoices', 'total_value')
+                ->with('project');
 
             // Búsqueda
             if ($request->has('search') && $request->search) {
@@ -34,9 +35,16 @@ class CostCenterController extends Controller
 
             // Agregar campos calculados
             $costCenters->getCollection()->transform(function ($costCenter) {
-                $costCenter->total_invoiced = $costCenter->invoices_sum_total_amount ?? '0.00';
+                $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
                 $costCenter->invoices_count = $costCenter->invoices_count ?? 0;
-                unset($costCenter->invoices_sum_total_amount);
+                
+                if ($costCenter->project) {
+                    $costCenter->budget = $costCenter->project->contracted_value_cop;
+                } else {
+                    $costCenter->budget = 0;
+                }
+
+                unset($costCenter->invoices_sum_total_value);
                 return $costCenter;
             });
 
@@ -69,7 +77,8 @@ class CostCenterController extends Controller
                 'name' => $request->name,
                 'code' => $request->code,
                 'description' => $request->description,
-                'department_id' => $request->department_id,
+                'department_id' => $request->department_id ?: null,
+                'project_id' => $request->project_id ?: null,
                 'is_active' => $request->is_active ?? true
             ]);
 
@@ -100,14 +109,21 @@ class CostCenterController extends Controller
     {
         try {
             $costCenter = CostCenter::withCount('invoices')
-                ->withSum('invoices', 'total_amount')
-                ->with(['invoices.provider'])
+                ->withSum('invoices', 'total_value')
+                ->with(['invoices.supplier', 'project'])
                 ->findOrFail($id);
 
             // Agregar campos calculados
-            $costCenter->total_invoiced = $costCenter->invoices_sum_total_amount ?? '0.00';
+            $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
             $costCenter->invoices_count = $costCenter->invoices_count ?? 0;
-            unset($costCenter->invoices_sum_total_amount);
+            
+            if ($costCenter->project) {
+                $costCenter->budget = $costCenter->project->contracted_value_cop;
+            } else {
+                $costCenter->budget = 0;
+            }
+
+            unset($costCenter->invoices_sum_total_value);
 
             return response()->json([
                 'success' => true,
@@ -145,7 +161,8 @@ class CostCenterController extends Controller
                 'name' => $request->name ?? $costCenter->name,
                 'code' => $request->code ?? $costCenter->code,
                 'description' => $request->description ?? $costCenter->description,
-                'department_id' => $request->department_id ?? $costCenter->department_id,
+                'department_id' => $request->department_id === '' ? null : ($request->department_id ?? $costCenter->department_id),
+                'project_id' => $request->project_id === '' ? null : ($request->project_id ?? $costCenter->project_id),
                 'is_active' => $request->is_active ?? $costCenter->is_active
             ]);
 
@@ -221,24 +238,24 @@ class CostCenterController extends Controller
             $costCentersWithoutInvoices = $totalCostCenters - $costCentersWithInvoices;
             
             // Obtener total facturado
-            $totalInvoiced = CostCenter::withSum('invoices', 'total_amount')
+            $totalInvoiced = CostCenter::withSum('invoices', 'total_value')
                 ->get()
-                ->sum('invoices_sum_total_amount') ?? 0;
+                ->sum('invoices_sum_total_value') ?? 0;
             
             $averageInvoicedPerCostCenter = $costCentersWithInvoices > 0 ? $totalInvoiced / $costCentersWithInvoices : 0;
             
             // Top centros de costo por monto facturado
-            $topCostCenters = CostCenter::withSum('invoices', 'total_amount')
+            $topCostCenters = CostCenter::withSum('invoices', 'total_value')
                 ->withCount('invoices')
-                ->having('invoices_sum_total_amount', '>', 0)
-                ->orderBy('invoices_sum_total_amount', 'desc')
+                ->having('invoices_sum_total_value', '>', 0)
+                ->orderBy('invoices_sum_total_value', 'desc')
                 ->limit(5)
                 ->get()
                 ->map(function ($costCenter) use ($totalInvoiced) {
-                    $costCenter->total_invoiced = $costCenter->invoices_sum_total_amount ?? '0.00';
+                    $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
                     $costCenter->percentage = $totalInvoiced > 0 ? 
-                        round(($costCenter->invoices_sum_total_amount / $totalInvoiced) * 100, 2) : 0;
-                    unset($costCenter->invoices_sum_total_amount);
+                        round(($costCenter->invoices_sum_total_value / $totalInvoiced) * 100, 2) : 0;
+                    unset($costCenter->invoices_sum_total_value);
                     return $costCenter;
                 });
             
@@ -281,7 +298,8 @@ class CostCenterController extends Controller
             ]);
 
             $query = CostCenter::withCount('invoices')
-                ->withSum('invoices', 'total_amount')
+                ->withSum('invoices', 'total_value')
+                ->with('project')
                 ->search($request->q);
 
             $perPage = min($request->get('per_page', 15), 100);
@@ -289,9 +307,16 @@ class CostCenterController extends Controller
 
             // Agregar campos calculados
             $costCenters->getCollection()->transform(function ($costCenter) {
-                $costCenter->total_invoiced = $costCenter->invoices_sum_total_amount ?? '0.00';
+                $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
                 $costCenter->invoices_count = $costCenter->invoices_count ?? 0;
-                unset($costCenter->invoices_sum_total_amount);
+                
+                if ($costCenter->project) {
+                    $costCenter->budget = $costCenter->project->contracted_value_cop;
+                } else {
+                    $costCenter->budget = 0;
+                }
+
+                unset($costCenter->invoices_sum_total_value);
                 return $costCenter;
             });
 
@@ -323,7 +348,7 @@ class CostCenterController extends Controller
         try {
             $costCenter = CostCenter::findOrFail($id);
             
-            $query = $costCenter->invoices()->with('provider');
+            $query = $costCenter->invoices()->with('supplier');
             
             // Filtros
             if ($request->has('status') && $request->status) {
@@ -331,7 +356,7 @@ class CostCenterController extends Controller
             }
             
             // Ordenamiento
-            $sortBy = $request->get('sort_by', 'invoice_date');
+            $sortBy = $request->get('sort_by', 'issue_date');
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
             
@@ -359,6 +384,80 @@ class CostCenterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener facturas del centro de costo',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Obtener evolución mensual de presupuesto vs ejecución
+     */
+    public function evolution(Request $request, string $id): JsonResponse
+    {
+        try {
+            $costCenter = CostCenter::with('project')->findOrFail($id);
+            
+            // Determinar rango de fechas (últimos 6 meses por defecto)
+            $endDate = now();
+            $startDate = now()->subMonths(5)->startOfMonth();
+            
+            // Obtener facturas agrupadas por mes
+            $monthlyData = $costCenter->invoices()
+                ->whereBetween('issue_date', [$startDate, $endDate])
+                ->selectRaw('DATE_FORMAT(issue_date, "%Y-%m") as month, SUM(total_value) as executed')
+                ->groupBy('month')
+                ->orderBy('month')
+                ->get()
+                ->keyBy('month');
+
+            // Calcular presupuesto mensual estimado
+            $monthlyBudget = 0;
+            if ($costCenter->project && $costCenter->project->contracted_value_cop > 0) {
+                $projectStart = $costCenter->project->start_date ? \Carbon\Carbon::parse($costCenter->project->start_date) : null;
+                $projectEnd = $costCenter->project->estimated_end_date ? \Carbon\Carbon::parse($costCenter->project->estimated_end_date) : null;
+                
+                if ($projectStart && $projectEnd) {
+                    $monthsDuration = $projectStart->diffInMonths($projectEnd) ?: 1;
+                    $monthlyBudget = $costCenter->project->contracted_value_cop / $monthsDuration;
+                } else {
+                    // Si no hay fechas definidas, asumimos 12 meses para el cálculo
+                    $monthlyBudget = $costCenter->project->contracted_value_cop / 12;
+                }
+            }
+
+            // Construir respuesta con los meses solicitados
+            $evolution = [];
+            $currentDate = clone $startDate;
+            
+            while ($currentDate <= $endDate) {
+                $monthKey = $currentDate->format('Y-m');
+                $monthLabel = $currentDate->locale('es')->isoFormat('MMM');
+                
+                $evolution[] = [
+                    'mes' => ucfirst($monthLabel),
+                    'full_date' => $monthKey,
+                    'presupuestado' => round(($monthlyBudget / 1000000), 2), // En millones
+                    'ejecutado' => round(($monthlyData->get($monthKey)->executed ?? 0) / 1000000, 2) // En millones
+                ];
+                
+                $currentDate->addMonth();
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Evolución obtenida exitosamente',
+                'data' => $evolution
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Centro de costo no encontrado'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener evolución',
                 'error' => $e->getMessage()
             ], 500);
         }
