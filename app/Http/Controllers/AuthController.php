@@ -29,19 +29,14 @@ class AuthController extends Controller
         $request->validate([
             'identifier' => 'required|string|max:255',
             'password' => 'required|string|min:1',
-            'login_method' => 'required|in:email,username',
         ]);
 
-        $loginMethod = $request->login_method;
         $identifier = $request->identifier;
 
-        // Buscar usuario por email o username
-        $user = User::where(function ($query) use ($loginMethod, $identifier) {
-            if ($loginMethod === 'email') {
-                $query->where('email', $identifier);
-            } else {
-                $query->where('username', $identifier);
-            }
+        // Buscar usuario por email o username automáticamente
+        $user = User::where(function ($query) use ($identifier) {
+            $query->where('email', $identifier)
+                  ->orWhere('username', $identifier);
         })->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
@@ -65,7 +60,7 @@ class AuthController extends Controller
         \Log::info('Web Auth: Login successful', [
             'user_id' => $user->id,
             'identifier' => $identifier,
-            'identifier_type' => $loginMethod,
+            'method' => filter_var($identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'username',
         ]);
 
         // Redirigir al dashboard o página de inicio

@@ -20,7 +20,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Trifásica 220V',
-                'price' => 2200,
+                'price' => 3800000,
             ],
             [
                 'brand' => 'Fronius',
@@ -28,7 +28,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Monofásica',
-                'price' => 1800,
+                'price' => 3100000,
             ],
             [
                 'brand' => 'Huawei',
@@ -36,7 +36,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'Híbrido',
                 'grid_type' => 'Trifásica 220V',
-                'price' => 1600,
+                'price' => 2750000,
             ],
             [
                 'brand' => 'Sungrow',
@@ -44,7 +44,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Monofásica',
-                'price' => 1400,
+                'price' => 2400000,
             ],
             [
                 'brand' => 'Growatt',
@@ -52,7 +52,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Trifásica 220V',
-                'price' => 1200,
+                'price' => 2100000,
             ],
             [
                 'brand' => 'Victron Energy',
@@ -60,7 +60,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'Off-grid',
                 'grid_type' => 'Monofásica',
-                'price' => 2800,
+                'price' => 4800000,
             ],
             [
                 'brand' => 'Solis',
@@ -68,7 +68,7 @@ class InverterSeeder extends Seeder
                 'power' => 1.5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Monofásica',
-                'price' => 450,
+                'price' => 850000,
             ],
             [
                 'brand' => 'GoodWe',
@@ -76,7 +76,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'Híbrido',
                 'grid_type' => 'Trifásica 220V',
-                'price' => 1900,
+                'price' => 3300000,
             ],
             [
                 'brand' => 'Deye',
@@ -84,7 +84,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'Híbrido',
                 'grid_type' => 'Monofásica',
-                'price' => 1700,
+                'price' => 2950000,
             ],
             [
                 'brand' => 'Ingeteam',
@@ -92,7 +92,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Trifásica 220V',
-                'price' => 2100,
+                'price' => 3600000,
             ],
             [
                 'brand' => 'Kaco',
@@ -100,7 +100,7 @@ class InverterSeeder extends Seeder
                 'power' => 5,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Monofásica',
-                'price' => 1950,
+                'price' => 3350000,
             ],
             [
                 'brand' => 'ABB',
@@ -108,7 +108,7 @@ class InverterSeeder extends Seeder
                 'power' => 5.8,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Trifásica 220V',
-                'price' => 2500,
+                'price' => 4300000,
             ],
             // Agregando más variedad con diferentes tipos de red
             [
@@ -117,7 +117,7 @@ class InverterSeeder extends Seeder
                 'power' => 6.8,
                 'system_type' => 'Híbrido',
                 'grid_type' => 'Trifásica 440V',
-                'price' => 3200,
+                'price' => 5500000,
             ],
             [
                 'brand' => 'OutBack Power',
@@ -125,7 +125,7 @@ class InverterSeeder extends Seeder
                 'power' => 8,
                 'system_type' => 'Off-grid',
                 'grid_type' => 'Bifásica 220V',
-                'price' => 3500,
+                'price' => 6000000,
             ],
             [
                 'brand' => 'Delta Electronics',
@@ -133,7 +133,7 @@ class InverterSeeder extends Seeder
                 'power' => 6,
                 'system_type' => 'On-grid',
                 'grid_type' => 'Trifásica 440V',
-                'price' => 2800,
+                'price' => 4800000,
             ],
         ];
 

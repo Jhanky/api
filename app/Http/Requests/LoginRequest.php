@@ -22,8 +22,7 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => 'required_without:username|email|max:255',
-            'username' => 'required_without:email|string|max:255',
+            'identifier' => 'required|string|max:255',
             'password' => 'required|string|min:1',
         ];
     }
@@ -36,12 +35,9 @@ class LoginRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'email.required_without' => 'El correo electrónico es requerido cuando no se proporciona nombre de usuario.',
-            'email.email' => 'El correo electrónico debe tener un formato válido.',
-            'email.max' => 'El correo electrónico no puede tener más de 255 caracteres.',
-            'username.required_without' => 'El nombre de usuario es requerido cuando no se proporciona correo electrónico.',
-            'username.string' => 'El nombre de usuario debe ser una cadena de texto.',
-            'username.max' => 'El nombre de usuario no puede tener más de 255 caracteres.',
+            'identifier.required' => 'El correo electrónico o nombre de usuario es requerido.',
+            'identifier.string' => 'El identificador debe ser una cadena de texto.',
+            'identifier.max' => 'El identificador no puede tener más de 255 caracteres.',
             'password.required' => 'La contraseña es requerida.',
             'password.string' => 'La contraseña debe ser una cadena de texto.',
             'password.min' => 'La contraseña debe tener al menos 1 caracter.',
@@ -55,7 +51,7 @@ class LoginRequest extends FormRequest
      */
     public function getIdentifier(): string
     {
-        return $this->filled('email') ? $this->email : $this->username;
+        return (string) $this->identifier;
     }
 
     /**
@@ -65,6 +61,6 @@ class LoginRequest extends FormRequest
      */
     public function getIdentifierType(): string
     {
-        return $this->filled('email') ? 'email' : 'username';
+        return filter_var($this->identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
     }
 }

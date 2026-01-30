@@ -25,7 +25,7 @@ class RequiredDocumentFactory extends Factory
     public function definition(): array
     {
         return [
-            'flow_type' => $this->faker->randomElement(['OPERATOR', 'UPME', 'INTERNAL']),
+            'flow_type' => $this->faker->randomElement(['OPERATOR', 'UPME']),
             'state' => $this->faker->word(),
             'name' => $this->faker->words(3, true),
             'description' => $this->faker->sentence(),

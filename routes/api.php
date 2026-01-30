@@ -205,6 +205,7 @@ Route::middleware(['auth:sanctum', 'api'])->group(function () {
     Route::get('invoices/test-report', [InvoiceController::class, 'testReportQuery']); // Probar consulta de reporte
     Route::get('invoices/cost-centers-projects', [InvoiceController::class, 'getCostCentersAndProjects']); // Centros de costo + proyectos unificados ANTES de apiResource
     Route::get('invoices-statistics', [InvoiceController::class, 'statistics']); // Estadísticas de facturas
+    Route::get('invoices/aging-report', [InvoiceController::class, 'agingReport']); // Reporte de cartera
     Route::get('invoices/export', [InvoiceController::class, 'exportToExcel']); // Exportar a Excel
     Route::apiResource('invoices', InvoiceController::class);
     Route::post('invoices/with-supplier', [InvoiceController::class, 'storeWithSupplier']); // Crear factura con proveedor automático

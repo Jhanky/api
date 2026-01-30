@@ -6,9 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Services\ClientService;
 use App\Traits\ApiResponseTrait;
+use App\Http\Requests\StoreClientRequest;
+use App\Http\Requests\UpdateClientRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 
 class ClientController extends Controller
@@ -49,38 +50,10 @@ class ClientController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreClientRequest $request): JsonResponse
     {
         try {
-            $validator = Validator::make($request->all(), [
-                'nic' => 'required|string|max:50|unique:clients,nic',
-                'client_type_id' => 'required|exists:client_types,id',
-                'name' => 'required|string|max:100',
-                'document_type' => 'required|string|max:20',
-                'document_number' => 'required|string|max:50|unique:clients,document_number',
-                'email' => 'nullable|email|max:100',
-                'phone' => 'nullable|string|max:20',
-                'mobile' => 'nullable|string|max:20',
-                'department_id' => 'required|exists:departments,id',
-                'city_id' => 'required|exists:cities,id',
-                'address' => 'required|string',
-                'monthly_consumption_kwh' => 'required|numeric|min:0',
-                'tariff_cop_kwh' => 'required|numeric|min:0',
-                'responsible_user_id' => 'nullable|exists:users,id',
-                'notes' => 'nullable|string',
-                'is_active' => 'boolean',
-                'primary_contact' => 'nullable|array',
-                'primary_contact.name' => 'required_with:primary_contact|string|max:100',
-                'primary_contact.email' => 'nullable|email|max:100',
-                'primary_contact.phone' => 'nullable|string|max:20',
-                'primary_contact.position' => 'nullable|string|max:100'
-            ]);
-
-            if ($validator->fails()) {
-                return $this->validationErrorResponse($validator->errors()->toArray());
-            }
-
-            $data = $request->all();
+            $data = $request->validated();
             $data['responsible_user_id'] = $data['responsible_user_id'] ?? Auth::id();
 
             $client = $this->clientService->createClient($data);
@@ -108,40 +81,12 @@ class ClientController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id): JsonResponse
+    public function update(UpdateClientRequest $request, string $id): JsonResponse
     {
         try {
             $client = Client::findOrFail($id);
+            $data = $request->validated();
 
-            $validator = Validator::make($request->all(), [
-                'nic' => 'sometimes|required|string|max:50|unique:clients,nic,' . $id,
-                'client_type_id' => 'sometimes|required|exists:client_types,id',
-                'name' => 'sometimes|required|string|max:100',
-                'document_type' => 'sometimes|required|string|max:20',
-                'document_number' => 'sometimes|required|string|max:50|unique:clients,document_number,' . $id,
-                'email' => 'nullable|email|max:100',
-                'phone' => 'nullable|string|max:20',
-                'mobile' => 'nullable|string|max:20',
-                'department_id' => 'sometimes|required|exists:departments,id',
-                'city_id' => 'sometimes|required|exists:cities,id',
-                'address' => 'sometimes|required|string',
-                'monthly_consumption_kwh' => 'sometimes|required|numeric|min:0',
-                'tariff_cop_kwh' => 'sometimes|required|numeric|min:0',
-                'responsible_user_id' => 'nullable|exists:users,id',
-                'notes' => 'nullable|string',
-                'is_active' => 'boolean',
-                'primary_contact' => 'nullable|array',
-                'primary_contact.name' => 'required_with:primary_contact|string|max:100',
-                'primary_contact.email' => 'nullable|email|max:100',
-                'primary_contact.phone' => 'nullable|string|max:20',
-                'primary_contact.position' => 'nullable|string|max:100'
-            ]);
-
-            if ($validator->fails()) {
-                return $this->validationErrorResponse($validator->errors()->toArray());
-            }
-
-            $data = $request->all();
             // Si no se envía responsible_user_id, mantener el valor actual
             // Solo asignar Auth::id() si es una creación nueva
             if (!isset($data['responsible_user_id'])) {

@@ -7,6 +7,9 @@ use App\Models\Invoice;
 use App\Models\Supplier;
 use App\Models\CostCenter;
 use App\Traits\ApiResponseTrait;
+use App\Services\InvoiceService;
+use App\Http\Requests\Invoices\StoreInvoiceRequest;
+use App\Http\Requests\Invoices\UpdateInvoiceRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
@@ -19,6 +22,13 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 class InvoiceController extends Controller
 {
     use ApiResponseTrait;
+
+    protected $invoiceService;
+
+    public function __construct(InvoiceService $invoiceService)
+    {
+        $this->invoiceService = $invoiceService;
+    }
 
     /**
      * Display a listing of the resource.
@@ -38,6 +48,11 @@ class InvoiceController extends Controller
             $status = $request->get('status');
             if ($status && $status !== 'undefined' && $status !== 'null' && $status !== 'all') {
                 $query->byStatus($status);
+            }
+
+            // Excluir 'cotizacion' del listado principal a menos que se filtre explícitamente
+            if ($status !== 'cotizacion' && $status !== 'all' && empty($search)) {
+                $query->where('status', '!=', 'cotizacion');
             }
 
             // Filtro por proveedor
@@ -93,63 +108,16 @@ class InvoiceController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreInvoiceRequest $request): JsonResponse
     {
         try {
-            $messages = [
-                'invoice_number.unique' => 'La factura ya fue registrada en la base de datos',
-            ];
-
-            $request->validate([
-                'invoice_number' => 'required|string|max:100|unique:invoices,invoice_number',
-                'invoice_date' => 'required|date',
-                'due_date' => 'nullable|date|after_or_equal:invoice_date',
-                'amount_before_iva' => 'required|numeric|min:0',
-                'retention' => 'nullable|numeric|min:0',
-                'has_retention' => 'nullable|boolean',
-                'description' => 'nullable|string|max:1000',
-                'status' => 'required|in:PENDIENTE,PAGADA',
-                'sale_type' => 'required|in:CONTADO,CREDITO',
-                'payment_method_id' => 'nullable|exists:payment_methods,id',
-                'provider_id' => 'required|exists:suppliers,supplier_id',
-                'cost_center_id' => 'required|exists:cost_centers,cost_center_id',
-                'payment_support' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240', // 10MB max
-                'invoice_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240' // 10MB max
-            ], $messages);
-
-            $data = $request->all();
-            $data['issue_date'] = $request->invoice_date;
-            if ($request->has('provider_id')) {
-                $data['supplier_id'] = $request->provider_id;
-            }
-
-            // Manejar subida de archivos
-            if ($request->hasFile('payment_support')) {
-                $paymentSupportFile = $request->file('payment_support');
-                $paymentSupportPath = $paymentSupportFile->store('invoices/payment_support', 'public');
-                $data['payment_support'] = $paymentSupportPath;
-            }
-
-            if ($request->hasFile('invoice_file')) {
-                $invoiceFile = $request->file('invoice_file');
-                $invoiceFilePath = $invoiceFile->store('invoices/invoice_files', 'public');
-                $data['invoice_file'] = $invoiceFilePath;
-            }
-
-            $invoice = Invoice::create($data);
-            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
+            $invoice = $this->invoiceService->createInvoice($request->validated(), $request);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Factura creada exitosamente',
                 'data' => $invoice
             ], 201);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -188,80 +156,22 @@ class InvoiceController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id): JsonResponse
+    public function update(UpdateInvoiceRequest $request, string $id): JsonResponse
     {
         try {
             $invoice = Invoice::findOrFail($id);
-
-            $messages = [
-                'invoice_number.unique' => 'La factura ya fue registrada en la base de datos',
-            ];
-
-            $request->validate([
-                'invoice_number' => "required|string|max:100|unique:invoices,invoice_number,{$id},invoice_id",
-                'invoice_date' => 'required|date',
-                'due_date' => 'nullable|date|after_or_equal:invoice_date',
-                'amount_before_iva' => 'required|numeric|min:0',
-                'retention' => 'nullable|numeric|min:0',
-                'has_retention' => 'nullable|boolean',
-                'description' => 'nullable|string|max:1000',
-                'status' => 'required|in:PENDIENTE,PAGADA',
-                'sale_type' => 'required|in:CONTADO,CREDITO',
-                'payment_method_id' => 'nullable|exists:payment_methods,id',
-                'provider_id' => 'required|exists:suppliers,supplier_id',
-                'cost_center_id' => 'required|exists:cost_centers,cost_center_id',
-                'payment_support' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240', // 10MB max
-                'invoice_file' => 'nullable|file|mimes:pdf,jpeg,png|max:10240' // 10MB max
-            ], $messages);
-
-            $data = $request->all();
-            $data['issue_date'] = $request->invoice_date;
-            if ($request->has('provider_id')) {
-                $data['supplier_id'] = $request->provider_id;
-            }
-
-            // Manejar subida de archivos
-            if ($request->hasFile('payment_support')) {
-                // Eliminar archivo anterior si existe
-                if ($invoice->payment_support && \Storage::disk('public')->exists($invoice->payment_support)) {
-                    \Storage::disk('public')->delete($invoice->payment_support);
-                }
-                
-                $paymentSupportFile = $request->file('payment_support');
-                $paymentSupportPath = $paymentSupportFile->store('invoices/payment_support', 'public');
-                $data['payment_support'] = $paymentSupportPath;
-            }
-
-            if ($request->hasFile('invoice_file')) {
-                // Eliminar archivo anterior si existe
-                if ($invoice->invoice_file && \Storage::disk('public')->exists($invoice->invoice_file)) {
-                    \Storage::disk('public')->delete($invoice->invoice_file);
-                }
-                
-                $invoiceFile = $request->file('invoice_file');
-                $invoiceFilePath = $invoiceFile->store('invoices/invoice_files', 'public');
-                $data['invoice_file'] = $invoiceFilePath;
-            }
-
-            $invoice->update($data);
-            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
+            $updatedInvoice = $this->invoiceService->updateInvoice($invoice, $request->validated(), $request);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Factura actualizada exitosamente',
-                'data' => $invoice
+                'data' => $updatedInvoice
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Factura no encontrada'
             ], 404);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -307,28 +217,21 @@ class InvoiceController extends Controller
             $invoice = Invoice::findOrFail($id);
 
             $request->validate([
-                'status' => 'required|in:PENDIENTE,PAGADA'
+                'status' => 'required|in:pendiente,pagada,parcial,anulada,cotizacion'
             ]);
 
-            $invoice->update(['status' => $request->status]);
-            $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
+            $updatedInvoice = $this->invoiceService->updateStatus($invoice, $request->status);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Estado de factura actualizado exitosamente',
-                'data' => $invoice
+                'data' => $updatedInvoice
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Factura no encontrada'
             ], 404);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -445,6 +348,28 @@ class InvoiceController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Reporte de cartera por edades
+     */
+    public function agingReport(): JsonResponse
+    {
+        try {
+            $report = $this->invoiceService->getAgingReport();
+
+            return response()->json([
+                'success' => true,
+                'data' => $report
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar reporte de cartera',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 
     /**
      * Cambiar centro de costo de una factura

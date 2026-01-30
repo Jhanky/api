@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RoleSeeder::class,
             UserSeeder::class,
+            GeographySeeder::class, // New: Departments and Cities
             ClientTypeSeeder::class,
             ClientSeeder::class,
             GridTypeSeeder::class,
@@ -24,7 +25,12 @@ class DatabaseSeeder extends Seeder
             PanelSeeder::class,
             BatterySeeder::class,
             InverterSeeder::class,
-            ProjectManagementSeeder::class,
+            SupplierSeeder::class, // New
+            QuotationSeeder::class, // New
+            RequiredDocumentSeeder::class, // New
+            ProjectSeeder::class,   // Updated
+            CostCenterSeeder::class, // New
+            InvoiceSeeder::class,   // New
         ]);
     }
 }

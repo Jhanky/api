@@ -5,9 +5,10 @@ namespace Database\Seeders;
 use App\Models\Client;
 use App\Models\Project;
 use App\Models\ProjectDocument;
-use App\Models\ProjectUpmeDetail;
 use App\Models\ProjectStateHistory;
 use App\Models\ProjectTechnicalSpecs;
+use App\Models\ProjectUpmeDetail;
+use App\Models\Quotation;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -18,77 +19,50 @@ class ProjectSeeder extends Seeder
      */
     public function run(): void
     {
-        // Ensure we have users and clients
-        if (User::count() == 0) {
-            User::factory(5)->create();
-        }
+        // We will create Projects that match a Quotation and Client correctly.
         
-        if (Client::count() == 0) {
-            Client::factory(5)->create();
+        // 1. Create Projects from new Quotations
+        $quotations = Quotation::factory()->count(15)->create([
+            'status_id' => 3, // Approved
+            'approved_at' => now()->subDays(rand(1, 30)),
+        ]);
+
+        foreach ($quotations as $quotation) {
+            
+            // Create Project linked to this quotation
+            // Note: ProjectFactory default definition might try to create a new quotation/client if we don't override.
+            // We must override client_id and quotation_id.
+            
+            $project = Project::factory()->create([
+                'client_id' => $quotation->client_id,
+                'quotation_id' => $quotation->id,
+                'current_state_id' => rand(1, 4), // Active states
+            ]);
+            
+            // Add related data
+            $this->addProjectDetails($project);
         }
 
-        // Create 10 Active Projects
-        Project::factory()
-            ->count(10)
-            ->create()
-            ->each(function ($project) {
-                // Add Technical Specs
-                ProjectTechnicalSpecs::factory()->create([
-                    'project_id' => $project->id,
-                ]);
+        // 2. Create Completed Projects
+        $completedQuotations = Quotation::factory()->count(5)->create([
+             'status_id' => 3,
+             'approved_at' => now()->subMonths(rand(6, 12)),
+        ]);
 
-                // Add UPME Details
-                ProjectUpmeDetail::factory()->create([
-                    'project_id' => $project->id,
-                ]);
+        foreach ($completedQuotations as $quotation) {
+             $project = Project::factory()->completed()->create([
+                'client_id' => $quotation->client_id,
+                'quotation_id' => $quotation->id,
+            ]);
+            $this->addProjectDetails($project);
+        }
+    }
 
-                // Add History (1-3 records)
-                ProjectStateHistory::factory()->count(rand(1, 3))->create([
-                    'project_id' => $project->id,
-                ]);
-
-                // Add Documents (3-7 records)
-                ProjectDocument::factory()->count(rand(3, 7))->create([
-                    'project_id' => $project->id,
-                ]);
-            });
-
-        // Create 5 Completed Projects
-        Project::factory()
-            ->count(5)
-            ->completed()
-            ->create()
-            ->each(function ($project) {
-                ProjectTechnicalSpecs::factory()->create([
-                    'project_id' => $project->id,
-                ]);
-
-                ProjectStateHistory::factory()->count(rand(2, 5))->create([
-                    'project_id' => $project->id,
-                ]);
-                
-                 ProjectDocument::factory()->count(rand(5, 10))->create([
-                    'project_id' => $project->id,
-                ]);
-            });
-
-        // Create 3 Overdue Projects
-        Project::factory()
-            ->count(3)
-            ->overdue()
-            ->create()
-            ->each(function ($project) {
-                ProjectTechnicalSpecs::factory()->create([
-                    'project_id' => $project->id,
-                ]);
-                
-                ProjectStateHistory::factory()->count(rand(1, 3))->create([
-                    'project_id' => $project->id,
-                ]);
-
-                 ProjectDocument::factory()->count(rand(2, 5))->create([
-                    'project_id' => $project->id,
-                ]);
-            });
+    private function addProjectDetails(Project $project): void
+    {
+        ProjectTechnicalSpecs::factory()->create(['project_id' => $project->id]);
+        ProjectUpmeDetail::factory()->create(['project_id' => $project->id]);
+        ProjectStateHistory::factory()->count(rand(1, 3))->create(['project_id' => $project->id]);
+        ProjectDocument::factory()->count(rand(3, 7))->create(['project_id' => $project->id]);
     }
 }
