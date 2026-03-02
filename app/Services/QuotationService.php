@@ -83,7 +83,7 @@ class QuotationService
     {
         return Quotation::with([
             'client' => function($q) {
-                $q->with('clientType');
+                $q->with(['clientType', 'city.department']);
             },
             'status',
             'systemType',

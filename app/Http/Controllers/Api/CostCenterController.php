@@ -38,7 +38,9 @@ class CostCenterController extends Controller
                 $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
                 $costCenter->invoices_count = $costCenter->invoices_count ?? 0;
                 
-                if ($costCenter->project) {
+                if ($costCenter->budget > 0) {
+                    $costCenter->budget = $costCenter->budget;
+                } elseif ($costCenter->project) {
                     $costCenter->budget = $costCenter->project->contracted_value_cop;
                 } else {
                     $costCenter->budget = 0;
@@ -79,6 +81,7 @@ class CostCenterController extends Controller
                 'description' => $request->description,
                 'department_id' => $request->department_id ?: null,
                 'project_id' => $request->project_id ?: null,
+                'budget' => $request->budget ?: null,
                 'is_active' => $request->is_active ?? true
             ]);
 
@@ -117,7 +120,9 @@ class CostCenterController extends Controller
             $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
             $costCenter->invoices_count = $costCenter->invoices_count ?? 0;
             
-            if ($costCenter->project) {
+            if ($costCenter->budget > 0) {
+                $costCenter->budget = $costCenter->budget;
+            } elseif ($costCenter->project) {
                 $costCenter->budget = $costCenter->project->contracted_value_cop;
             } else {
                 $costCenter->budget = 0;
@@ -163,6 +168,7 @@ class CostCenterController extends Controller
                 'description' => $request->description ?? $costCenter->description,
                 'department_id' => $request->department_id === '' ? null : ($request->department_id ?? $costCenter->department_id),
                 'project_id' => $request->project_id === '' ? null : ($request->project_id ?? $costCenter->project_id),
+                'budget' => $request->has('budget') ? ($request->budget ?: null) : $costCenter->budget,
                 'is_active' => $request->is_active ?? $costCenter->is_active
             ]);
 
@@ -310,7 +316,9 @@ class CostCenterController extends Controller
                 $costCenter->total_invoiced = $costCenter->invoices_sum_total_value ?? '0.00';
                 $costCenter->invoices_count = $costCenter->invoices_count ?? 0;
                 
-                if ($costCenter->project) {
+                if ($costCenter->budget > 0) {
+                    $costCenter->budget = $costCenter->budget;
+                } elseif ($costCenter->project) {
                     $costCenter->budget = $costCenter->project->contracted_value_cop;
                 } else {
                     $costCenter->budget = 0;
@@ -412,17 +420,23 @@ class CostCenterController extends Controller
 
             // Calcular presupuesto mensual estimado
             $monthlyBudget = 0;
-            if ($costCenter->project && $costCenter->project->contracted_value_cop > 0) {
-                $projectStart = $costCenter->project->start_date ? \Carbon\Carbon::parse($costCenter->project->start_date) : null;
-                $projectEnd = $costCenter->project->estimated_end_date ? \Carbon\Carbon::parse($costCenter->project->estimated_end_date) : null;
+            $budgetToUse = $costCenter->budget ?: ($costCenter->project ? $costCenter->project->contracted_value_cop : 0);
+
+            if ($budgetToUse > 0) {
+                // Si hay fechas de proyecto, se usan para distribuir el presupuesto
+                // Si no, se asume distribución en 12 meses para el cálculo
+                $monthsDuration = 12;
                 
-                if ($projectStart && $projectEnd) {
-                    $monthsDuration = $projectStart->diffInMonths($projectEnd) ?: 1;
-                    $monthlyBudget = $costCenter->project->contracted_value_cop / $monthsDuration;
-                } else {
-                    // Si no hay fechas definidas, asumimos 12 meses para el cálculo
-                    $monthlyBudget = $costCenter->project->contracted_value_cop / 12;
+                if ($costCenter->project) {
+                    $projectStart = $costCenter->project->start_date ? \Carbon\Carbon::parse($costCenter->project->start_date) : null;
+                    $projectEnd = $costCenter->project->estimated_end_date ? \Carbon\Carbon::parse($costCenter->project->estimated_end_date) : null;
+                    
+                    if ($projectStart && $projectEnd) {
+                        $monthsDuration = $projectStart->diffInMonths($projectEnd) ?: 1;
+                    }
                 }
+                
+                $monthlyBudget = $budgetToUse / $monthsDuration;
             }
 
             // Construir respuesta con los meses solicitados

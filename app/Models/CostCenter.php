@@ -21,11 +21,13 @@ class CostCenter extends Model
         'description',
         'department_id',
         'project_id',
+        'budget',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'budget' => 'decimal:2',
     ];
 
     /**

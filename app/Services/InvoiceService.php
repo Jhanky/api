@@ -27,7 +27,7 @@ class InvoiceService
         }
 
         $invoice = Invoice::create($data);
-        $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
+        $invoice->load(['supplier', 'costCenter']);
 
         return $invoice;
     }
@@ -51,7 +51,7 @@ class InvoiceService
         }
 
         $invoice->update($data);
-        $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
+        $invoice->load(['supplier', 'costCenter']);
 
         return $invoice;
     }
@@ -62,7 +62,7 @@ class InvoiceService
     public function updateStatus(Invoice $invoice, string $status): Invoice
     {
         $invoice->update(['status' => $status]);
-        $invoice->load(['supplier', 'costCenter', 'paymentMethod']);
+        $invoice->load(['supplier', 'costCenter']);
         return $invoice;
     }
 
